@@ -1,4 +1,4 @@
-﻿//SMART FAN
+﻿1//SMART FAN
 import * as fs from 'fs';
 import { logger } from "../logger/Logger";
 import { vMaps, valueMap, utils } from "../boards/Constants";
@@ -69,7 +69,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
     public evalFanPower: Function;
     public async initAsync(deviceType): Promise<boolean> {
         try {
-            if (deviceType.id === 1002) this.cliVer = 4;
+            if (deviceType.id === 1003) this.cliVer = 6;
             if (typeof this.options.fanCurve === 'undefined' || typeof this.options.fanCurve === 'string') {
                 this.options.fanCurve = undefined;
                 let fc = this.fanCurve;
@@ -88,16 +88,16 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
                 this.evalFanPower = new Function('options', 'values', 'info', this.options.fanPowerFn);
             if (this.device.isActive) {
                 await this.getHwFwVer();
-                // If this is a cliVer >= 4 we need to export a gpio pin for the fan control.  Another stupid present from Sequent.
-                if (this.cliVer >= 4) {
-                    this.powerPin = await cont.gpio.setPinAsync(1, 12,
-                        {
-                            isActive: true,
-                            name: `${this.device.name} Power`, direction: 'output',
-                            isInverted: false, initialState: 'off', debounceTimeout: 0
-                        }
-                    );
-                }
+                // // If this is a cliVer >= 4 we need to export a gpio pin for the fan control.  Another stupid present from Sequent.
+                // if (this.cliVer >= 4) {
+                //     this.powerPin = await cont.gpio.setPinAsync(1, 12,
+                //         {
+                //             isActive: true,
+                //             name: `${this.device.name} Power`, direction: 'output',
+                //             isInverted: false, initialState: 'off', debounceTimeout: 0
+                //         }
+                //     );
+                // }
                 await this.getFanPower();                           
                 await this.getStatus();
             }
@@ -162,29 +162,29 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
             } else {             
                 // Sequent did it again.  The completely revised the smart fan so it does not return this information on later versions.
                 this.info.hwVersion = `6.0`;                    
-                this.cliVer = 4;
+                this.cliVer = 6;
             }
         } catch (err) { logger.error(`${this.device.name} error getting firmware version: ${err.message}`); }
     }
     protected async getFanPower() {
         try {
             if (this.i2c.isMock) return; // Don't get the fan power from the register in this case
-            if (this.cliVer >= 4) {
-                // On version 4 the PWM fan power is not returned in the same way.  We are reading the device register for this.
-                let buff = await this.i2c.read(this.device.address, 1);
-                if (buff.bytesRead === 1) {
-                    let pwr = buff.buffer.readUInt8(0);
-                    logger.verbose(`${this.device.name} getFanPower = ${pwr}`);
-                    this.values.fanPower = Math.round((255 - pwr) / 2.55);
-                }
-                else {
-                    this.values.fanPower = 0;
-                }
-            }
-            else {
+            // if (this.cliVer >= 4) {
+            //     // On version 4 the PWM fan power is not returned in the same way.  We are reading the device register for this.
+            //     let buff = await this.i2c.read(this.device.address, 1);
+            //     if (buff.bytesRead === 1) {
+            //         let pwr = buff.buffer.readUInt8(0);
+            //         logger.verbose(`${this.device.name} getFanPower = ${pwr}`);
+            //         this.values.fanPower = Math.round((255 - pwr) / 2.55);
+            //     }
+            //     else {
+            //         this.values.fanPower = 0;
+            //     }
+            // }
+            // else {
                 let fanPower = (this.i2c.isMock) ? Math.round(Math.random() * 100) : await this.i2c.readByte(this.device.address, this.regs.I2C_MEM_FAN_POWER);
                 this.values.fanPower = fanPower;
-            }
+            // }
 
         } catch (err) { logger.error(`${this.device.name} error getting fan power: ${err.message}`); }
     }
@@ -254,26 +254,26 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         try {
             let val = this.calcFanPower();
             if (val !== this.values.fanPower) {
-                if (this.cliVer < 4) {
+                // if (this.cliVer < 4) {
                     let buffer = Buffer.from([val]);
                     buffer.writeUInt8(val, 0);
                     if (!this.i2c.isMock)
                         await this.i2c.writeI2cBlock(this.device.address, this.regs.I2C_MEM_FAN_POWER, 1, buffer);
                     else
                         this.values.fanPower = val;
-                }
-                else {
-                    // Sequent occupies a gpio pin to turn on and off the fan.
-                    let pwr = Math.round(255 - Math.min(val * 2.55, 255));
-                    if (typeof this.powerPin !== 'undefined') await this.powerPin.setPinStateAsync(val > 0);
-                    let buffer = Buffer.from([pwr]);
-                    logger.verbose(`${this.device.name} setFanPower = ${pwr} val = ${val}`);
-                    if (!this.i2c.isMock)
-                        await this.i2c.writeI2cBlock(this.device.address, this.regs.I2C_MEM_FAN_POWER, 1, buffer);
-                    else {
-                        this.values.fanPower = val;
-                    }
-                }
+                // }
+                // else {
+                //     // Sequent occupies a gpio pin to turn on and off the fan.
+                //     let pwr = Math.round(255 - Math.min(val * 2.55, 255));
+                //     if (typeof this.powerPin !== 'undefined') await this.powerPin.setPinStateAsync(val > 0);
+                //     let buffer = Buffer.from([pwr]);
+                //     logger.verbose(`${this.device.name} setFanPower = ${pwr} val = ${val}`);
+                //     if (!this.i2c.isMock)
+                //         await this.i2c.writeI2cBlock(this.device.address, this.regs.I2C_MEM_FAN_POWER, 1, buffer);
+                //     else {
+                //         this.values.fanPower = val;
+                //     }
+                // }
             }
         }
         catch (err) { logger.error(`${this.device.name} error setting fan power: ${err.message}`); }
