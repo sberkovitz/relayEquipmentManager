@@ -88,7 +88,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
                 this.evalFanPower = new Function('options', 'values', 'info', this.options.fanPowerFn);
             if (this.device.isActive) {
                 await this.getHwFwVer();               
-                this.powerPin = await cont.gpio.setPinAsync(1, 12,
+                this.powerPin = await cont.gpio.setPinAsync(1, 524,
                     {
                         isActive: true,
                         name: `${this.device.name} Power`, direction: 'output',
