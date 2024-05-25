@@ -1907,7 +1907,7 @@
       "interfaces": [ "i2c" ]
     },
     {
-      "id": 1002,
+      "id": 1003,
       "enabled": true,
       "name": "Sequent Smart Fan v6+",
       "deviceClass": "SequentSmartFanV6",
@@ -1924,8 +1924,7 @@
           }
         }
       },
-      "outputs": [
-            
+      "outputs": [            
         {
           "name": "fwversion",
           "desc": "Firmware Version",
@@ -1978,7 +1977,65 @@
                       "display": "block"
                     }
                   }
-                },                
+                },  
+                {
+                  "field": {
+                    "type": "pickList",
+                    "labelText": "Units",
+                    "binding": "options.units",
+                    "bindColumn": 0,
+                    "displayColumn": 1,
+                    "style": {
+                      "display": "block",
+                      "marginTop": ".25rem",
+                      "marginBottom": ".25rem",
+                      "verticalAlign": "middle"
+
+                    },
+                    "labelAttrs": {
+                      "style": {
+                        "width": "3rem"
+                      }
+                    },
+                    "columns": [
+                      {
+                        "hidden": true,
+                        "binding": "name",
+                        "text": "name",
+                        "style": {
+                          "whiteSpace": "nowrap"
+                        }
+                      },
+                      {
+                        "hidden": false,
+                        "binding": "desc",
+                        "text": "Description",
+                        "style": {
+                          "whiteSpace": "nowrap"
+                        }
+                      }
+                    ],
+                    "items": [
+                      {
+                        "name": "F",
+                        "desc": "Fahrenheit"
+                      },
+                      {
+                        "name": "C",
+                        "desc": "Celsius"
+                      },
+                      {
+                        "name": "K",
+                        "desc": "Kelvin"
+                      }
+                    ],
+                    "inputAttrs": {
+                      "style": {
+                        "width": "7rem"
+                      }
+                    }
+                  }
+                },              
                 {
                   "dataType": "panel",
                   "field": {

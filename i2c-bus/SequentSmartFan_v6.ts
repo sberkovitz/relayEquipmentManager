@@ -62,7 +62,8 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         this.options.fanCurve.exp.start = utils.convert.temperature.convertUnits(fc.exp.start, from, to);
         this.options.fanCurve.log.start = utils.convert.temperature.convertUnits(fc.log.start, from, to);
         //console.log(fc);        
-        this.values.cpuTemp = ct(this.values.cpuTemp, from, to);                
+        this.values.cpuTemp = ct(this.values.cpuTemp, from, to);           
+        this.options.units = this.values.units = to;     
         webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: this.values });
     }
     public evalFanPower: Function;
@@ -80,6 +81,9 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
             this.options.readInterval = Math.max(500, this.options.readInterval);
             if (typeof this.device.options.name !== 'string' || this.device.options.name.length === 0) this.device.name = this.device.options.name = deviceType.name;
             else this.device.name = this.device.options.name;        
+            if (typeof this.device.options.units === 'undefined') {
+                this.device.options.units = this.device.values.units = 'C';
+            }
             if (typeof this.options.fanPowerFn !== 'undefined' && this.options.fanPowerFn.length > 0)
                 this.evalFanPower = new Function('options', 'values', 'info', this.options.fanPowerFn);
             if (this.device.isActive) {
