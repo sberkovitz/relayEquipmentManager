@@ -1,4 +1,4 @@
-﻿1//SMART FAN
+﻿//SMART FAN
 import * as fs from 'fs';
 import { logger } from "../logger/Logger";
 import { vMaps, valueMap, utils } from "../boards/Constants";
@@ -21,7 +21,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
 
         SLAVE_BUFF_SIZE: 108
     };
-    protected powerPin: GpioPin;
+    
     protected cliVer:number = 1;
     protected _timerRead: NodeJS.Timeout;
     protected _infoRead: NodeJS.Timeout;
@@ -286,7 +286,10 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
             }
             if (fs.existsSync('/sys/class/thermal/thermal_zone0/temp')) {
                 let buffer = fs.readFileSync('/sys/class/thermal/thermal_zone0/temp');
-                return utils.convert.temperature.convertUnits(parseInt(buffer.toString().trim(), 10) / 1000, 'C', this.values.units);
+                let cpuTemp: number;
+                cpuTemp = utils.convert.temperature.convertUnits(parseInt(buffer.toString().trim(), 10) / 1000, 'C', this.values.units);
+                this.values.cpuTemp = cpuTemp;
+                return cpuTemp;
             }
         } catch (err) { logger.error(`${this.device.name} error getting cpu temp: ${err.message}`); }
     }  
@@ -308,7 +311,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
             await this.setFanPower(); //not a reading; but set the value and then make sure it is set properly.
             await this.getCpuTemp();
             await this.getFanPower();
-            if (this.values.fanPower !== _values.fanPower || this.values.fanTemp !== _values.fanTemp || this.values.fanPowerFnVal !== _values.fanPowerFnVal) {
+            if (this.values.fanPower !== _values.fanPower || this.values.fanPowerFnVal !== _values.fanPowerFnVal) {
                 webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: this.values });
             }
             this.emitFeeds();
