@@ -306,6 +306,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         try {
             let _values = JSON.parse(JSON.stringify(this.values));            
             await this.setFanPower(); //not a reading; but set the value and then make sure it is set properly.
+            await this.getCpuTemp();
             await this.getFanPower();
             if (this.values.fanPower !== _values.fanPower || this.values.fanTemp !== _values.fanTemp || this.values.fanPowerFnVal !== _values.fanPowerFnVal) {
                 webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: this.values });
@@ -375,13 +376,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
             case 'cputempf':
                 return utils.convert.temperature.convertUnits(this.getCpuTemp(), this.values.units, 'F');
             case 'cputempk':
-                return utils.convert.temperature.convertUnits(this.getCpuTemp(), this.values.units, 'K');
-            case 'fantempc':
-                return utils.convert.temperature.convertUnits(this.values.fanTemp, this.values.units, 'C');
-            case 'fantempf':
-                return utils.convert.temperature.convertUnits(this.values.fanTemp, this.values.units, 'F');
-            case 'fantempk':
-                return utils.convert.temperature.convertUnits(this.values.fanTemp, this.values.units, 'K');
+                return utils.convert.temperature.convertUnits(this.getCpuTemp(), this.values.units, 'K');        
             case 'fwversion':
                 return this.info.fwVersion;
             default:
@@ -393,10 +388,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         switch (p) {
             case 'cputempc':
             case 'cputempf':
-            case 'cputempk':
-            case 'fantempc':
-            case 'fantempf':
-            case 'fantempk':
+            case 'cputempk':        
             case 'inputvoltage':
             case 'pivoltage':
                 return super.calcMedian(prop, values);
