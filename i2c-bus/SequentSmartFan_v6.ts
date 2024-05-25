@@ -135,6 +135,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
                     if (typeof curve.min !== 'undefined') fc.log.min = curve.min;
                 }
             }            
+            if (typeof opts.units !== 'undefined' && this.options.units !== opts.units) this.setUnits(opts.units);
 
             if (typeof opts.fanPowerFn !== 'undefined' && opts.fanPowerFn !== this.options.fanPowerFn) {
                 this.evalFanPower = new Function('options', 'values', 'info', opts.fanPowerFn);
@@ -145,7 +146,14 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         catch (err) { this.logError(err); Promise.reject(err); }
         finally { this.suspendPolling = false; }
     }
-   
+    public setUnits(value: string): Promise<boolean> {
+        try {
+            if (!['C', 'F', 'K'].includes(value.toUpperCase())) return Promise.reject(new Error(`Cannot set units to ${value}`));
+            let prevUnits = this.values.units || 'C';
+            this.changeUnits(prevUnits, value);
+        }
+        catch (err) { this.logError(err); }
+    }
     protected async getHwFwVer() {
         try {
             if (this.i2c.isMock) {
