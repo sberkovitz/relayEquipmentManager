@@ -170,24 +170,15 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
     }
     protected async getFanPower() {
         try {
-            if (this.i2c.isMock) return; // Don't get the fan power from the register in this case
-            // if (this.cliVer >= 4) {
-            //     // On version 4 the PWM fan power is not returned in the same way.  We are reading the device register for this.
-            //     let buff = await this.i2c.read(this.device.address, 1);
-            //     if (buff.bytesRead === 1) {
-            //         let pwr = buff.buffer.readUInt8(0);
-            //         logger.verbose(`${this.device.name} getFanPower = ${pwr}`);
-            //         this.values.fanPower = Math.round((255 - pwr) / 2.55);
-            //     }
-            //     else {
-            //         this.values.fanPower = 0;
-            //     }
-            // }
-            // else {
-                let fanPower = (this.i2c.isMock) ? Math.round(Math.random() * 100) : await this.i2c.readByte(this.device.address, this.regs.I2C_MEM_FAN_POWER);
-                this.values.fanPower = fanPower;
-            // }
+            if (this.i2c.isMock) Math.round(Math.random() * 100); // Don't get the fan power from the register in this case
+        
+            let fanPower = 0;                    
+            let readValue = await this.i2c.readByte(this.device.address, this.regs.I2C_MEM_FAN_POWER);
+            readValue = 255 - readValue;
+            fanPower = Math.round(readValue / 2.55);        
 
+            this.values.fanPower = fanPower;
+    
         } catch (err) { logger.error(`${this.device.name} error getting fan power: ${err.message}`); }
     }
     protected calcFanPower(): number {
