@@ -8,6 +8,9 @@ import { Buffer } from "buffer";
 import { i2cDeviceBase } from "./I2cBus";
 import { webApp } from "../web/Server";
 import { I2cDevice, DeviceBinding, cont, GpioPin } from "../boards/Controller";
+import { Gpio } from 'onoff';
+const gp = require('onoff').Gpio;
+
 export class SequentSmartFanV6 extends i2cDeviceBase {
     protected regs = {
         I2C_MEM_FAN_POWER: 0,
@@ -21,7 +24,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
 
         SLAVE_BUFF_SIZE: 108
     };
-    protected powerPin: GpioPin;
+    protected powerPin: Gpio;
     protected cliVer:number = 1;
     protected _timerRead: NodeJS.Timeout;
     protected _infoRead: NodeJS.Timeout;
@@ -87,14 +90,16 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
             if (typeof this.options.fanPowerFn !== 'undefined' && this.options.fanPowerFn.length > 0)
                 this.evalFanPower = new Function('options', 'values', 'info', this.options.fanPowerFn);
             if (this.device.isActive) {
-                await this.getHwFwVer();               
-                this.powerPin = await cont.gpio.setPinAsync(1, 524,
-                    {
-                        isActive: true,
-                        name: `${this.device.name} Power`, direction: 'output',
-                        isInverted: false, initialState: 'off', debounceTimeout: 0
-                    }
-                );            
+                await this.getHwFwVer();         
+                this.powerPin = new gp(524, 'out');      
+                // this.powerPin = await cont.gpio.setPinAsync(1, 32,
+                //     {
+                //         isActive: true,
+                //         name: `${this.device.name} Power`, direction: 'output',
+                //         isInverted: false, initialState: 'off', debounceTimeout: 0
+                //     }
+                // );                            
+                this.powerPin.writeSync(1);
                 await this.getFanPower();                           
                 await this.getStatus();
             }
@@ -253,7 +258,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
             if (val !== this.values.fanPower) {             
                 // Sequent occupies a gpio pin to turn on and off the fan.
                 let pwr = Math.round(255 - Math.min(val * 2.55, 255));
-                if (typeof this.powerPin !== 'undefined') await this.powerPin.setPinStateAsync(val > 0);
+                if (typeof this.powerPin !== 'undefined')  this.powerPin.writeSync((val > 0 ? 1 : 0));
                 let buffer = Buffer.from([pwr]);
                 logger.verbose(`${this.device.name} setFanPower = ${pwr} val = ${val}`);
                 if (!this.i2c.isMock)
