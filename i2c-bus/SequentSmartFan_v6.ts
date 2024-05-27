@@ -1,7 +1,7 @@
 ﻿//SMART FAN
 import * as fs from 'fs';
 import { logger } from "../logger/Logger";
-import { vMaps, valueMap, utils } from "../boards/Constants";
+import { utils } from "../boards/Constants";
 import { setTimeout, clearTimeout } from "timers";
 import * as extend from "extend";
 import { Buffer } from "buffer";
@@ -21,37 +21,47 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
       
         SLAVE_BUFF_SIZE: 108
     };
+
     protected powerPin: GpioPin;
     protected _timerRead: NodeJS.Timeout;
     protected _infoRead: NodeJS.Timeout;
     protected _suspendPolling: number = 0;
+    protected processing = 0;
     protected _pollInformationInterval = 3000;
+
+    public evalFanPower: Function;
+
     protected logError(err, msg?: string) { logger.error(`${this.device.name} ${typeof msg !== 'undefined' ? msg + ' ' : ''}${typeof err !== 'undefined' ? err.message : ''}`); }
     protected get version(): number { return typeof this.device !== 'undefined' && this.options !== 'undefined' && typeof this.device.info !== 'undefined' ? parseFloat(this.device.info.firmware) : 0 }
-    protected processing = 0;
+    
     protected get fanCurve(): { curve: string, linear: { start: number, end: number, min: number }, exp: { start: number, min: number, ramp: string }, log: { start: number, min: number, ramp: string } } {
         if (typeof this.options.units === 'undefined') this.options.units = 'C';
 
         if (typeof this.options.fanCurve === 'undefined') {
             this.options.fanCurve = { curve: 'linear' };
         }
+
         if (typeof this.options.fanCurve.linear === 'undefined') this.options.fanCurve.linear = {
             start: Math.round(utils.convert.temperature.convertUnits(30, 'C', this.options.units)),
             end: Math.round(utils.convert.temperature.convertUnits(70, 'C', this.options.units)),
             min: 0
         };
+
         if (typeof this.options.fanCurve.exp === 'undefined') this.options.fanCurve.exp = {
             start: utils.convert.temperature.convertUnits(30, 'C', this.options.units),
             min: 0,
             ramp: 'slow'
         };
+
         if (typeof this.options.fanCurve.log === 'undefined') this.options.fanCurve.log = {
             start: utils.convert.temperature.convertUnits(30, 'C', this.options.units),
             min: 0,
             ramp: 'slow'
         };
+        
         return this.options.fanCurve;
     }
+
     protected changeUnits(from: string, to: string) {
         //if (from === to) return;
         //console.log(`Changing units from ${from} to ${to}`);
@@ -67,7 +77,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         this.options.units = this.values.units = to;     
         webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: this.values });
     }
-    public evalFanPower: Function;
+    
     public async initAsync(deviceType): Promise<boolean> {
         try {
             if (typeof this.options.fanCurve === 'undefined' || typeof this.options.fanCurve === 'string') {
@@ -77,16 +87,28 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
             }
             
             this.stopPolling();
-            if (typeof this.options.readInterval === 'undefined') this.options.readInterval = 3000;
-            this.options.readInterval = Math.max(500, this.options.readInterval);
-            if (typeof this.options.name !== 'string' || this.options.name.length === 0) this.device.name = this.options.name = deviceType.name;
-            else this.device.name = this.device.options.name;
+
+            if (typeof this.options.readInterval === 'undefined') {
+                this.options.readInterval = 3000;
+            }            
+
+            this.options.readInterval = Math.max(3000, this.options.readInterval);
+            
+            if (typeof this.options.name !== 'string' || this.options.name.length === 0) {
+                this.device.name = this.options.name = deviceType.name;
+            }
+            else { 
+                this.device.name = this.device.options.name;
+            } 
+
             if (typeof this.options.units === 'undefined') {
                 this.options.units = this.device.values.units = 'C';
             }
-            if (typeof this.options.fanPowerFn !== 'undefined' && this.options.fanPowerFn.length > 0)
+
+            if (typeof this.options.fanPowerFn !== 'undefined' && this.options.fanPowerFn.length > 0) {
                 this.evalFanPower = new Function('options', 'values', 'info', this.options.fanPowerFn);
-            
+            }
+
             this.powerPin = await cont.gpio.setPinAsync(1, 32,
                 {
                     isActive: this.device.isActive,
@@ -108,6 +130,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
             setTimeout(() => { this.pollReadings(); }, 5000);
         }
     }
+
     public async setOptions(opts): Promise<any> {
         try {
             this.suspendPolling = true;
@@ -147,6 +170,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         catch (err) { this.logError(err); Promise.reject(err); }
         finally { this.suspendPolling = false; }
     }
+
     public setUnits(value: string): Promise<boolean> {
         try {
             if (!['C', 'F', 'K'].includes(value.toUpperCase())) return Promise.reject(new Error(`Cannot set units to ${value}`));
@@ -155,21 +179,22 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         }
         catch (err) { this.logError(err); }
     }
+
     protected async getHwFwVer() {
         try {
             if (this.i2c.isMock) {
-                this.info.fwVersion =  '1.0 Mock';
-                this.info.hwVersion = `4.0 Mock`;
-            } else {             
-                // Sequent did it again.  The completely revised the smart fan so it does not return this information on later versions.
+                this.info.fwVersion =  `1.0 Mock`;
+                this.info.hwVersion = `6.0 Mock`;
+            } else {                            
                 this.info.hwVersion = `6.0`;   
                 this.info.fwVersion = `1.0`;                 
             }
         } catch (err) { logger.error(`${this.device.name} error getting firmware version: ${err.message}`); }
     }
+
     protected async getFanPower() {
         try {
-            if (this.i2c.isMock) Math.round(Math.random() * 100); // Don't get the fan power from the register in this case
+            if (this.i2c.isMock) Math.round(Math.random() * 100); 
         
             let fanPower = await this.i2c.readByte(this.device.address, this.regs.I2C_MEM_FAN_POWER);
             fanPower = Math.round((255 - fanPower) / 2.55);
@@ -178,6 +203,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
     
         } catch (err) { logger.error(`${this.device.name} error getting fan power: ${err.message}`); }
     }
+
     protected calcFanPower(): number {
         let val: number = 0, _val: number = 0;
         if (this.fanCurve.curve === 'custom') {
@@ -208,8 +234,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
                 case 'fast':
                     b = 1.04;
             }
-            _val = Math.log(Math.max(.001, temp - start)) / Math.log(b);
-            //_val = (Math.log(Math.max(.001, this.values.cpuTemp - curve.start)) * (1 / Math.log(b)));
+            _val = Math.log(Math.max(.001, temp - start)) / Math.log(b);          
             _val = Math.max(Math.min(_val, 100), 0);
             val = Math.max(_val, curve.min);
         }
@@ -240,6 +265,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         this.values.fanPowerFnVal = _val;
         return Math.round(Math.max(Math.min(val, 100), 0));
     }
+
     protected async setFanPower() {
         try {
             let val = this.calcFanPower();
@@ -298,6 +324,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         catch (err) { this.logError(err, 'Error Polling Device Information'); }
         finally { this._infoRead = setTimeout(() => { this.pollDeviceInformation(); }, this._pollInformationInterval); }
     }
+
     protected async takeReadings(): Promise<boolean> {
         try {
             let _values = JSON.parse(JSON.stringify(this.values));            
@@ -312,6 +339,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         }
         catch (err) { this.logError(err, 'Error taking device readings'); }
     }
+
     protected pollReadings() {
         try {
             if (this._timerRead) clearTimeout(this._timerRead);
@@ -328,10 +356,16 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         catch (err) { this.logError(err, 'Error Polling Device Values'); }
         finally { this._timerRead = setTimeout(() => { this.pollReadings(); }, this.options.readInterval) }
     }
-    public get suspendPolling(): boolean { if (this._suspendPolling > 0) logger.warn(`${this.device.name} Suspend Polling ${this._suspendPolling}`); return this._suspendPolling > 0; }
+
+    public get suspendPolling(): boolean { 
+        if (this._suspendPolling > 0) logger.warn(`${this.device.name} Suspend Polling ${this._suspendPolling}`); 
+        return this._suspendPolling > 0; 
+    
+    }
     public set suspendPolling(val: boolean) {
         this._suspendPolling = Math.max(0, this._suspendPolling + (val ? 1 : -1));
     }
+
     public stopPolling() {
         this.suspendPolling = true;
         if (this._timerRead) clearTimeout(this._timerRead);
@@ -339,6 +373,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         this._timerRead = this._infoRead = null;
         this._suspendPolling = 0;
     }
+
     public async getStatus(): Promise<boolean> {
         try {
             this.suspendPolling = true;
@@ -347,6 +382,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         catch (err) { logger.error(`Error getting info ${typeof err !== 'undefined' ? err.message : ''}`); return Promise.reject(err); }
         finally { this.suspendPolling = false; }
     }
+
     public async getDeviceInformation(): Promise<boolean> {
         try {
             this.suspendPolling = true;
@@ -356,6 +392,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         catch (err) { logger.error(`Error retrieving device status: ${typeof err !== 'undefined' ? err.message : ''}`); return Promise.reject(err); }
         finally { this.suspendPolling = false; }
     }
+
     public async closeAsync(): Promise<void> {
         try {
             await this.stopPolling();
@@ -364,6 +401,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         }
         catch (err) { return this.logError(err); }
     }
+
     public getValue(prop: string) {
         let p = prop.toLowerCase();
         switch (p) {
@@ -379,6 +417,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
                 return this.values[prop];
         }
     }
+
     public calcMedian(prop: string, values: any[]) {
         let p = prop.toLowerCase();
         switch (p) {
@@ -406,6 +445,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
                 else logger.error(`${this.device.name} error calculating median value for ${prop}.`);
         }
     }
+
     public setValue(prop: string, value) {
         let p = prop.toLowerCase();
         if (prop.includes('temp')) {
@@ -417,14 +457,9 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
                 this.values.cpuTemp = utils.convert.temperature.convertUnits(value, prop.slice(-1), this.options.units);
             }
             webApp.emitToClients('i2cDeviceInformation', { bus: this.i2c.busNumber, address: this.device.address, info: this.device.info });
-        }
-
-        // switch (p) {
-        //     default:
-
-        //         break;
-        // }
+        }      
     }
+
     public async getDeviceState(binding: string | DeviceBinding): Promise<any> {
         try {
             let bind = (typeof binding === 'string') ? new DeviceBinding(binding) : binding;
@@ -433,6 +468,7 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
             return this.values;
         } catch (err) { return Promise.reject(err); }
     }
+
     public async setValues(vals): Promise<any> {
         try {
             this.suspendPolling = true;
@@ -440,8 +476,5 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
         }
         catch (err) { this.logError(err); Promise.reject(err); }
         finally { this.suspendPolling = false; }
-    }
-    // public getDeviceDescriptions(dev) {
-
-    // }
+    }   
 }
