@@ -244,9 +244,12 @@ export class SequentSmartFanV6 extends i2cDeviceBase {
                 // Sequent occupies a gpio pin to turn on and off the fan.
                 let pwr = Math.round(255 - Math.min(val * 2.55, 255));
                 if (typeof this.powerPin !== 'undefined')  {
+                    // Device was initially configured inactive, now active (without restart)
                     if(!this.powerPin.isActive) {
-                        this.powerPin.isActive = true;
-                    }
+                        await this.powerPin.setPinAsync({                            
+                            isActive: true,
+                        })      
+                    }              
                     this.powerPin.setPinStateAsync((val > 0 ? 1 : 0));
                 }
                 let buffer = Buffer.from([pwr]);
