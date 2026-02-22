@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .box { fill: #e8f4f8; stroke: #0288d1; stroke-width: 2; }
+      .core { fill: #fff3e0; stroke: #f57c00; stroke-width: 2; }
+      .bus { fill: #f3e5f5; stroke: #7b1fa2; stroke-width: 2; }
+      .connection { fill: #e8f5e9; stroke: #388e3c; stroke-width: 2; }
+      .text { font-family: Arial, sans-serif; font-size: 14px; text-anchor: middle; }
+      .title { font-family: Arial, sans-serif; font-size: 18px; font-weight: bold; text-anchor: middle; }
+      .arrow { stroke: #333; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .label { font-family: Arial, sans-serif; font-size: 12px; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#333" />
+    </marker>
+  </defs>
+
+  <text x="600" y="30" class="title">Relay Equipment Manager - System Architecture</text>
+
+  <!-- Main Application Core -->
+  <rect x="450" y="80" width="300" height="80" class="core" rx="5"/>
+  <text x="600" y="115" class="text" style="font-weight: bold;">REM Application Core</text>
+  <text x="600" y="135" class="text">(app.ts, Config, Logger)</text>
+  <text x="600" y="155" class="text">Orchestration &amp; Lifecycle</text>
+
+  <!-- Hardware Interface Layer -->
+  <text x="600" y="200" class="label" style="font-weight: bold;">Hardware Interface Layer</text>
+
+  <rect x="50" y="220" width="150" height="100" class="bus" rx="5"/>
+  <text x="125" y="245" class="text" style="font-weight: bold;">GPIO</text>
+  <text x="125" y="270" class="text">Digital I/O</text>
+  <text x="125" y="290" class="text">Pins &amp;</text>
+  <text x="125" y="310" class="text">Interrupts</text>
+
+  <rect x="250" y="220" width="150" height="100" class="bus" rx="5"/>
+  <text x="325" y="245" class="text" style="font-weight: bold;">I2C Bus</text>
+  <text x="325" y="270" class="text">Sensor Devices</text>
+  <text x="325" y="290" class="text">Multiplexers</text>
+  <text x="325" y="310" class="text">Controllers</text>
+
+  <rect x="450" y="220" width="150" height="100" class="bus" rx="5"/>
+  <text x="525" y="245" class="text" style="font-weight: bold;">SPI Bus</text>
+  <text x="525" y="270" class="text">ADC Chips</text>
+  <text x="525" y="290" class="text">SPI0, SPI1</text>
+  <text x="525" y="310" class="text">Analog Input</text>
+
+  <rect x="650" y="220" width="150" height="100" class="bus" rx="5"/>
+  <text x="725" y="245" class="text" style="font-weight: bold;">1-Wire Bus</text>
+  <text x="725" y="270" class="text">Temperature</text>
+  <text x="725" y="290" class="text">Sensors</text>
+  <text x="725" y="310" class="text">Dallas DS18B20</text>
+
+  <rect x="850" y="220" width="150" height="100" class="bus" rx="5"/>
+  <text x="925" y="245" class="text" style="font-weight: bold;">Generic Devices</text>
+  <text x="925" y="270" class="text">Device Driver</text>
+  <text x="925" y="290" class="text">Abstraction</text>
+  <text x="925" y="310" class="text">Layer</text>
+
+  <!-- Data Model Layer -->
+  <text x="600" y="370" class="label" style="font-weight: bold;">Data Model Layer</text>
+
+  <rect x="150" y="390" width="200" height="80" class="box" rx="5"/>
+  <text x="250" y="415" class="text" style="font-weight: bold;">Device Binding</text>
+  <text x="250" y="435" class="text">Device-to-Pin Mapping</text>
+  <text x="250" y="455" class="text">Type: Bus:Device:Params</text>
+
+  <rect x="450" y="390" width="200" height="80" class="box" rx="5"/>
+  <text x="550" y="415" class="text" style="font-weight: bold;">Trigger</text>
+  <text x="550" y="435" class="text">Data Source Events</text>
+  <text x="550" y="455" class="text">Conditions &amp; Operators</text>
+
+  <rect x="750" y="390" width="200" height="80" class="box" rx="5"/>
+  <text x="850" y="415" class="text" style="font-weight: bold;">Connection</text>
+  <text x="850" y="435" class="text">Routes Trigger-&gt;Feed</text>
+  <text x="850" y="455" class="text">MQTT, WebSocket, etc</text>
+
+  <!-- Connection Management -->
+  <text x="600" y="530" class="label" style="font-weight: bold;">External Connections</text>
+
+  <rect x="150" y="550" width="200" height="80" class="connection" rx="5"/>
+  <text x="250" y="575" class="text" style="font-weight: bold;">MQTT Broker</text>
+  <text x="250" y="595" class="text">Message Distribution</text>
+  <text x="250" y="615" class="text">External Systems</text>
+
+  <rect x="450" y="550" width="200" height="80" class="connection" rx="5"/>
+  <text x="550" y="575" class="text" style="font-weight: bold;">WebSocket Server</text>
+  <text x="550" y="595" class="text">Real-time Web Clients</text>
+  <text x="550" y="615" class="text">Web UI Dashboard</text>
+
+  <rect x="750" y="550" width="200" height="80" class="connection" rx="5"/>
+  <text x="850" y="575" class="text" style="font-weight: bold;">njspc / REST</text>
+  <text x="850" y="595" class="text">Device/Controller API</text>
+  <text x="850" y="615" class="text">External Integrations</text>
+
+  <!-- Data Flow Arrows -->
+  <path d="M 600 160 L 600 220" class="arrow"/>
+  <path d="M 200 320 L 250 390" class="arrow"/>
+  <path d="M 400 320 L 500 390" class="arrow"/>
+  <path d="M 600 320 L 600 390" class="arrow"/>
+  <path d="M 800 320 L 750 390" class="arrow"/>
+
+  <path d="M 250 470 L 250 550" class="arrow"/>
+  <path d="M 550 470 L 550 550" class="arrow"/>
+  <path d="M 850 470 L 850 550" class="arrow"/>
+</svg>

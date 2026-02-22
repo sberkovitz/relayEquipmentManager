@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .box { fill: #e8f4f8; stroke: #0288d1; stroke-width: 2; }
+      .trigger { fill: #ffebee; stroke: #c62828; stroke-width: 2; }
+      .connection-box { fill: #fff3e0; stroke: #f57c00; stroke-width: 2; }
+      .feed { fill: #e8f5e9; stroke: #388e3c; stroke-width: 2; }
+      .text { font-family: Arial, sans-serif; font-size: 14px; text-anchor: middle; }
+      .title { font-family: Arial, sans-serif; font-size: 18px; font-weight: bold; text-anchor: middle; }
+      .subtitle { font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; text-anchor: middle; }
+      .arrow { stroke: #333; stroke-width: 2.5; fill: none; marker-end: url(#arrowhead); }
+      .flow-arrow { stroke: #d32f2f; stroke-width: 3; fill: none; marker-end: url(#arrowhead-red); }
+      .label { font-family: Arial, sans-serif; font-size: 12px; }
+      .step-label { font-family: Arial, sans-serif; font-size: 11px; fill: #666; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#333" />
+    </marker>
+    <marker id="arrowhead-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#d32f2f" />
+    </marker>
+  </defs>
+
+  <text x="600" y="30" class="title">Data Flow: Trigger → Connection → Feed</text>
+
+  <!-- STAGE 1: TRIGGER -->
+  <text x="200" y="70" class="subtitle">1. DATA SOURCE (TRIGGER)</text>
+  
+  <rect x="50" y="100" width="140" height="100" class="trigger" rx="5"/>
+  <text x="120" y="125" class="text" style="font-weight: bold;">Hardware</text>
+  <text x="120" y="145" class="text">GPIO / I2C</text>
+  <text x="120" y="165" class="text">Sensors</text>
+
+  <rect x="230" y="100" width="140" height="100" class="trigger" rx="5"/>
+  <text x="300" y="125" class="text" style="font-weight: bold;">Temperature</text>
+  <text x="300" y="145" class="text">1-Wire Bus</text>
+  <text x="300" y="165" class="text">DS18B20</text>
+
+  <rect x="410" y="100" width="140" height="100" class="trigger" rx="5"/>
+  <text x="480" y="125" class="text" style="font-weight: bold;">Analog</text>
+  <text x="480" y="145" class="text">SPI ADC</text>
+  <text x="480" y="165" class="text">Channels</text>
+
+  <!-- STAGE 2: TRIGGER PROCESSING -->
+  <text x="200" y="270" class="subtitle">2. TRIGGER PROCESSING</text>
+
+  <rect x="80" y="300" width="240" height="120" class="box" rx="5"/>
+  <text x="200" y="325" class="text" style="font-weight: bold;">Trigger Event</text>
+  <text x="200" y="350" class="text">• Device reads value</text>
+  <text x="200" y="370" class="text">• Binding applied</text>
+  <text x="200" y="390" class="text">• Condition checked</text>
+  <text x="200" y="410" class="text">(gt, lt, eq, neq, gte, lte)</text>
+
+  <!-- STAGE 3: ROUTING/CONNECTION -->
+  <text x="900" y="270" class="subtitle">3. ROUTING (CONNECTION)</text>
+
+  <rect x="750" y="300" width="300" height="120" class="connection-box" rx="5"/>
+  <text x="900" y="325" class="text" style="font-weight: bold;">Connection Bindings</text>
+  <text x="900" y="350" class="text">• Map Trigger to Feed</text>
+  <text x="900" y="370" class="text">• Apply Connection Type</text>
+  <text x="900" y="390" class="text">MQTT / WebSocket / njspc</text>
+  <text x="900" y="410" class="text">• Serialize data</text>
+
+  <!-- STAGE 4: OUTPUT FEEDS -->
+  <text x="200" y="520" class="subtitle">4. OUTPUT (FEED)</text>
+
+  <rect x="50" y="550" width="140" height="100" class="feed" rx="5"/>
+  <text x="120" y="575" class="text" style="font-weight: bold;">MQTT Publish</text>
+  <text x="120" y="595" class="text">Topic-based</text>
+  <text x="120" y="615" class="text">Distribution</text>
+
+  <rect x="230" y="550" width="140" height="100" class="feed" rx="5"/>
+  <text x="300" y="575" class="text" style="font-weight: bold;">WebSocket</text>
+  <text x="300" y="595" class="text">Real-time</text>
+  <text x="300" y="615" class="text">Client Push</text>
+
+  <rect x="410" y="550" width="140" height="100" class="feed" rx="5"/>
+  <text x="480" y="575" class="text" style="font-weight: bold;">REST API</text>
+  <text x="480" y="595" class="text">Poll-based</text>
+  <text x="480" y="615" class="text">Queries</text>
+
+  <!-- External Consumers -->
+  <text x="850" y="520" class="subtitle">5. EXTERNAL SYSTEMS</text>
+
+  <rect x="750" y="550" width="140" height="100" class="box" rx="5"/>
+  <text x="820" y="575" class="text" style="font-weight: bold;">MQTT Clients</text>
+  <text x="820" y="595" class="text">IoT Systems</text>
+  <text x="820" y="615" class="text">Controllers</text>
+
+  <rect x="930" y="550" width="140" height="100" class="box" rx="5"/>
+  <text x="1000" y="575" class="text" style="font-weight: bold;">Web Browsers</text>
+  <text x="1000" y="595" class="text">Dashboard</text>
+  <text x="1000" y="615" class="text">Real-time UI</text>
+
+  <!-- Main Flow Arrows -->
+  <path d="M 120 200 L 200 300" class="flow-arrow"/>
+  <path d="M 300 200 L 200 300" class="flow-arrow"/>
+  <path d="M 480 200 L 200 300" class="flow-arrow"/>
+
+  <path d="M 320 360 L 750 360" class="flow-arrow"/>
+
+  <path d="M 900 420 L 200 550" class="flow-arrow"/>
+  <path d="M 900 420 L 380 550" class="flow-arrow"/>
+  <path d="M 900 420 L 560 550" class="flow-arrow"/>
+
+  <path d="M 120 650 L 820 650" class="arrow"/>
+  <path d="M 300 650 L 1000 650" class="arrow"/>
+
+  <!-- Labels on arrows -->
+  <text x="150" y="265" class="step-label">triggers on</text>
+  <text x="530" y="385" class="step-label">route via</text>
+  <text x="650" y="345" class="step-label">condition met</text>
+  <text x="550" y="600" class="step-label">publish to</text>
+  <text x="700" y="600" class="step-label">client update</text>
+
+  <!-- Legend -->
+  <text x="50" y="780" class="label" style="font-weight: bold;">Key Concepts:</text>
+  <rect x="50" y="795" width="15" height="15" class="trigger"/>
+  <text x="75" y="807" class="label">Trigger: Input sensor/device event</text>
+  
+  <rect x="50" y="825" width="15" height="15" class="connection-box"/>
+  <text x="75" y="837" class="label">Connection: Routes data from Trigger to Feed</text>
+  
+  <rect x="50" y="855" width="15" height="15" class="feed"/>
+  <text x="75" y="867" class="label">Feed: Output channel to external systems</text>
+</svg>
