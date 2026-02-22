@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="1000" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .layer { stroke: #424242; stroke-width: 2; }
+      .gpio-layer { fill: #e3f2fd; }
+      .i2c-layer { fill: #f3e5f5; }
+      .spi-layer { fill: #fff3e0; }
+      .onewire-layer { fill: #e8f5e9; }
+      .device { fill: #eceff1; stroke: #37474f; stroke-width: 1.5; }
+      .text { font-family: Arial, sans-serif; text-anchor: middle; }
+      .title { font-family: Arial, sans-serif; font-size: 18px; font-weight: bold; text-anchor: middle; }
+      .subtitle { font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; }
+      .label { font-family: Arial, sans-serif; font-size: 12px; }
+      .conn-line { stroke: #555; stroke-width: 1.5; fill: none; }
+      .legend-box { fill: #f5f5f5; stroke: #999; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <text x="600" y="30" class="title">Hardware Interface Layers &amp; Device Connectivity</text>
+
+  <!-- APPLICATION LAYER -->
+  <rect x="100" y="50" width="1000" height="60" class="layer" style="fill: #fce4ec; stroke: #c2185b; stroke-width: 2"/>
+  <text x="600" y="87" class="subtitle" style="font-size: 16px;">Application Layer: GPIO Controller, I2C Bus, SPI Bus, 1-Wire Bus</text>
+
+  <!-- STACK LAYERS -->
+
+  <!-- GPIO LAYER -->
+  <text x="150" y="150" class="subtitle">GPIO Interface</text>
+  <rect x="50" y="170" width="250" height="230" class="layer gpio-layer"/>
+
+  <text x="175" y="200" class="label" style="font-weight: bold;">GPIO Mode: Digital I/O</text>
+  <text x="175" y="225" class="label">• BCM Numbering</text>
+  <text x="175" y="245" class="label">• Input/Output pins</text>
+  <text x="175" y="265" class="label">• Pull-up/Pull-down</text>
+  <text x="175" y="285" class="label">• Edge detection</text>
+
+  <rect x="65" y="310" width="220" height="80" class="device" rx="3"/>
+  <text x="175" y="335" class="label" style="font-weight: bold;">Connected Devices:</text>
+  <text x="175" y="355" class="label">• Relays (GPIO output)</text>
+  <text x="175" y="375" class="label">• Buttons (GPIO input)</text>
+
+  <!-- I2C LAYER -->
+  <text x="400" y="150" class="subtitle">I2C Bus Interface</text>
+  <rect x="325" y="170" width="250" height="230" class="layer i2c-layer"/>
+
+  <text x="450" y="200" class="label" style="font-weight: bold;">I2C Configuration</text>
+  <text x="450" y="225" class="label">• Standard 100kHz</text>
+  <text x="450" y="245" class="label">• Fast 400kHz mode</text>
+  <text x="450" y="265" class="label">• Multi-master capable</text>
+  <text x="450" y="285" class="label">• SDA/SCL pull-ups</text>
+
+  <rect x="340" y="310" width="220" height="80" class="device" rx="3"/>
+  <text x="450" y="335" class="label" style="font-weight: bold;">Connected Devices:</text>
+  <text x="450" y="355" class="label">• Humidity Sensors</text>
+  <text x="450" y="375" class="label">• Multiplexers, ADCs</text>
+
+  <!-- SPI LAYER -->
+  <text x="650" y="150" class="subtitle">SPI Bus Interface</text>
+  <rect x="600" y="170" width="250" height="230" class="layer spi-layer"/>
+
+  <text x="725" y="200" class="label" style="font-weight: bold;">SPI Configuration</text>
+  <text x="725" y="225" class="label">• SPI0 &amp; SPI1</text>
+  <text x="725" y="245" class="label">• Configurable speed</text>
+  <text x="725" y="265" class="label">• Chip Select (CS)</text>
+  <text x="725" y="285" class="label">• MOSI/MISO/CLK</text>
+
+  <rect x="615" y="310" width="220" height="80" class="device" rx="3"/>
+  <text x="725" y="335" class="label" style="font-weight: bold;">Connected Devices:</text>
+  <text x="725" y="355" class="label">• ADS1x15 ADC</text>
+  <text x="725" y="375" class="label">• Analog signal input</text>
+
+  <!-- 1-WIRE LAYER -->
+  <text x="925" y="150" class="subtitle">1-Wire Bus Interface</text>
+  <rect x="875" y="170" width="250" height="230" class="layer onewire-layer"/>
+
+  <text x="1000" y="200" class="label" style="font-weight: bold;">1-Wire Protocol</text>
+  <text x="1000" y="225" class="label">• Dallas DS18B20</text>
+  <text x="1000" y="245" class="label">• Parasitic power</text>
+  <text x="1000" y="265" class="label">• ROM ID addressing</text>
+  <text x="1000" y="285" class="label">• Single wire + GND</text>
+
+  <rect x="890" y="310" width="220" height="80" class="device" rx="3"/>
+  <text x="1000" y="335" class="label" style="font-weight: bold;">Connected Devices:</text>
+  <text x="1000" y="355" class="label">• Temperature Sensors</text>
+  <text x="1000" y="375" class="label">• Multi-drop support</text>
+
+  <!-- HARDWARE BLOCK DIAGRAM -->
+  <text x="600" y="450" class="subtitle" style="font-size: 14px;">Raspberry Pi / BeagleBone Header Pin Mapping</text>
+
+  <g>
+    <!-- GPIO Header -->
+    <rect x="50" y="480" width="200" height="120" class="legend-box"/>
+    <text x="150" y="505" class="label" style="font-weight: bold;">GPIO Header</text>
+    <text x="150" y="525" class="label">GPIO4, GPIO17, GPIO22</text>
+    <text x="150" y="540" class="label">GPIO23, GPIO24, GPIO27</text>
+    <text x="150" y="555" class="label">GPIO10, GPIO11, GPIO5</text>
+    <text x="150" y="570" class="label">GPIO6, GPIO12, GPIO13</text>
+    <text x="150" y="585" class="label">Power: 3.3V, 5V, GND</text>
+
+    <!-- I2C Header -->
+    <rect x="300" y="480" width="200" height="120" class="legend-box"/>
+    <text x="400" y="505" class="label" style="font-weight: bold;">I2C Header (I2C1)</text>
+    <text x="400" y="525" class="label">Pin 3: SDA (GPIO2)</text>
+    <text x="400" y="540" class="label">Pin 5: SCL (GPIO3)</text>
+    <text x="400" y="555" class="label">Address Range:</text>
+    <text x="400" y="570" class="label">0x00 - 0x7F</text>
+    <text x="400" y="585" class="label">Pull-up resistors</text>
+
+    <!-- SPI Header -->
+    <rect x="550" y="480" width="200" height="120" class="legend-box"/>
+    <text x="650" y="505" class="label" style="font-weight: bold;">SPI Header</text>
+    <text x="650" y="525" class="label">Pin 19: MOSI</text>
+    <text x="650" y="540" class="label">Pin 21: MISO</text>
+    <text x="650" y="555" class="label">Pin 23: CLK</text>
+    <text x="650" y="570" class="label">Pin 24/26: CS</text>
+    <text x="650" y="585" class="label">GND: Pin 25</text>
+
+    <!-- 1-Wire Header -->
+    <rect x="800" y="480" width="200" height="120" class="legend-box"/>
+    <text x="900" y="505" class="label" style="font-weight: bold;">1-Wire Pin</text>
+    <text x="900" y="525" class="label">GPIO4 (Pin 7)</text>
+    <text x="900" y="540" class="label">Parasitic Power</text>
+    <text x="900" y="555" class="label">or External PSU</text>
+    <text x="900" y="570" class="label">Pull-up: 4.7kΩ</text>
+    <text x="900" y="585" class="label">GND: Pin 6/9/14</text>
+  </g>
+
+  <!-- DEVICE CONNECTIVITY STACK -->
+  <text x="600" y="650" class="subtitle" style="font-size: 14px;">Device Connectivity Stack</text>
+
+  <rect x="100" y="680" width="1000" height="50" class="device" style="fill: #ffebee"/>
+  <text x="600" y="710" class="label" style="font-weight: bold;">Layer 0: Physical Devices (Relays, Sensors, ADCs, Temperature Probes)</text>
+
+  <path d="M 200 680 L 200 650" class="conn-line" stroke-dasharray="5,5"/>
+  <path d="M 450 680 L 450 650" class="conn-line" stroke-dasharray="5,5"/>
+  <path d="M 725 680 L 725 650" class="conn-line" stroke-dasharray="5,5"/>
+  <path d="M 1000 680 L 1000 650" class="conn-line" stroke-dasharray="5,5"/>
+
+  <rect x="100" y="750" width="1000" height="50" class="device" style="fill: #e0f2f1"/>
+  <text x="600" y="780" class="label" style="font-weight: bold;">Layer 1: Bus Interface (GPIO, I2C, SPI, 1-Wire)</text>
+
+  <path d="M 600 750 L 600 720" class="conn-line" stroke-dasharray="5,5"/>
+
+  <rect x="100" y="820" width="1000" height="50" class="device" style="fill: #f1f8e9"/>
+  <text x="600" y="850" class="label" style="font-weight: bold;">Layer 2: Drivers &amp; Controllers (AnalogDevices, GenericDevices, Bindings)</text>
+
+  <path d="M 600 820 L 600 790" class="conn-line" stroke-dasharray="5,5"/>
+
+  <rect x="100" y="890" width="1000" height="50" class="device" style="fill: #fff3e0"/>
+  <text x="600" y="920" class="label" style="font-weight: bold;">Layer 3: Application Logic (Triggers, Connections, Feeds)</text>
+
+  <!-- Legend -->
+  <text x="50" y="970" class="label" style="font-weight: bold;">Note:</text>
+  <text x="50" y="990" class="label">All I2C/SPI devices are multiplexed on single buses. Each device has unique address or chip select (CS) line.</text>
+</svg>
