@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1400" height="900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .board { fill: #e0e0e0; stroke: #424242; stroke-width: 2; }
+      .server { fill: #bbdefb; stroke: #1976d2; stroke-width: 2; }
+      .external { fill: #c8e6c9; stroke: #388e3c; stroke-width: 2; }
+      .service { fill: #ffe0b2; stroke: #f57c00; stroke-width: 2; }
+      .network { fill: #f8bbd0; stroke: #c2185b; stroke-width: 2; }
+      .device { fill: #e1bee7; stroke: #7b1fa2; stroke-width: 2; }
+      .text { font-family: Arial, sans-serif; text-anchor: middle; }
+      .title { font-family: Arial, sans-serif; font-size: 18px; font-weight: bold; text-anchor: middle; }
+      .subtitle { font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; }
+      .label { font-family: Arial, sans-serif; font-size: 12px; }
+      .arrow { stroke: #333; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .net-arrow { stroke: #d32f2f; stroke-width: 2.5; fill: none; marker-end: url(#arrowhead-red); stroke-dasharray: 5,5; }
+      .bi-arrow { stroke: #1976d2; stroke-width: 2.5; fill: none; marker-end: url(#arrowhead-blue); marker-start: url(#arrowhead-blue-start); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#333" />
+    </marker>
+    <marker id="arrowhead-red" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#d32f2f" />
+    </marker>
+    <marker id="arrowhead-blue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#1976d2" />
+    </marker>
+    <marker id="arrowhead-blue-start" markerWidth="10" markerHeight="10" refX="1" refY="3" orient="auto">
+      <polygon points="10 0, 0 3, 10 6" fill="#1976d2" />
+    </marker>
+  </defs>
+
+  <text x="700" y="30" class="title">REM Deployment Topology: Raspberry Pi / BeagleBone</text>
+
+  <!-- LEFT SIDE: HARDWARE DEPLOYMENT -->
+  <text x="250" y="70" class="subtitle">On-Premise Hardware</text>
+
+  <!-- Raspberry Pi / BeagleBone -->
+  <rect x="80" y="100" width="340" height="280" class="board" rx="8"/>
+  <text x="250" y="130" class="label" style="font-weight: bold; font-size: 14px;">Raspberry Pi 4B / BeagleBone Black</text>
+
+  <!-- REM Core Container -->
+  <rect x="100" y="150" width="300" height="210" class="server" rx="5"/>
+  <text x="250" y="175" class="label" style="font-weight: bold;">REM Application Core</text>
+  
+  <text x="250" y="200" class="label">• Config &amp; Logger</text>
+  <text x="250" y="218" class="label">• Controller (cont)</text>
+  <text x="250" y="236" class="label">• GPIO Controller</text>
+  <text x="250" y="254" class="label">• I2C Bus (i2cBus)</text>
+  <text x="250" y="272" class="label">• SPI Bus (spi0, spi1)</text>
+  <text x="250" y="290" class="label">• 1-Wire Bus</text>
+  <text x="250" y="308" class="label">• Web Server</text>
+  <text x="250" y="326" class="label">• Connection Broker</text>
+
+  <!-- HARDWARE INTERFACES -->
+  <text x="250" y="380" class="subtitle">Hardware Interfaces &amp; Devices</text>
+
+  <rect x="50" y="410" width="80" height="80" class="device" rx="4"/>
+  <text x="90" y="435" class="label" style="font-weight: bold;">GPIO</text>
+  <text x="90" y="455" class="label">Relays</text>
+  <text x="90" y="475" class="label">Buttons</text>
+
+  <rect x="155" y="410" width="80" height="80" class="device" rx="4"/>
+  <text x="195" y="435" class="label" style="font-weight: bold;">I2C</text>
+  <text x="195" y="455" class="label">Sensors</text>
+  <text x="195" y="475" class="label">Mux</text>
+
+  <rect x="260" y="410" width="80" height="80" class="device" rx="4"/>
+  <text x="300" y="435" class="label" style="font-weight: bold;">SPI</text>
+  <text x="300" y="455" class="label">ADC</text>
+  <text x="300" y="475" class="label">Analog</text>
+
+  <rect x="365" y="410" width="80" height="80" class="device" rx="4"/>
+  <text x="405" y="435" class="label" style="font-weight: bold;">1-Wire</text>
+  <text x="405" y="455" class="label">Temp</text>
+  <text x="405" y="475" class="label">Sensors</text>
+
+  <!-- Connections from core to interfaces -->
+  <path d="M 150 360 L 90 410" class="arrow"/>
+  <path d="M 200 360 L 195 410" class="arrow"/>
+  <path d="M 250 360 L 300 410" class="arrow"/>
+  <path d="M 300 360 L 405 410" class="arrow"/>
+
+  <!-- RIGHT SIDE: EXTERNAL SYSTEMS -->
+  <text x="1050" y="70" class="subtitle">External Systems &amp; Networks</text>
+
+  <!-- MQTT Broker -->
+  <rect x="900" y="100" width="300" height="100" class="external" rx="5"/>
+  <text x="1050" y="130" class="label" style="font-weight: bold;">MQTT Broker</text>
+  <text x="1050" y="150" class="label">• Mosquitto / AWS IoT</text>
+  <text x="1050" y="170" class="label">• Topic-based pub/sub</text>
+  <text x="1050" y="190" class="label">• Multi-protocol gateway</text>
+
+  <!-- WebSocket Clients -->
+  <rect x="900" y="230" width="300" height="100" class="service" rx="5"/>
+  <text x="1050" y="260" class="label" style="font-weight: bold;">WebSocket Clients</text>
+  <text x="1050" y="280" class="label">• Web Browser Dashboard</text>
+  <text x="1050" y="300" class="label">• Real-time updates</text>
+  <text x="1050" y="320" class="label">• Port: 8080 (default)</text>
+
+  <!-- REST API Consumers -->
+  <rect x="900" y="360" width="300" height="100" class="service" rx="5"/>
+  <text x="1050" y="390" class="label" style="font-weight: bold;">REST API / njspc</text>
+  <text x="1050" y="410" class="label">• External integrations</text>
+  <text x="1050" y="430" class="label">• Device state queries</text>
+  <text x="1050" y="450" class="label">• HTTP/HTTPS</text>
+
+  <!-- Cloud Systems -->
+  <rect x="900" y="490" width="300" height="100" class="network" rx="5"/>
+  <text x="1050" y="520" class="label" style="font-weight: bold;">Cloud / Remote Systems</text>
+  <text x="1050" y="540" class="label">• MQTT Subscribers</text>
+  <text x="1050" y="560" class="label">• Monitoring services</text>
+  <text x="1050" y="580" class="label">• Data aggregation</text>
+
+  <!-- CONNECTIVITY -->
+  <text x="600" y="70" class="subtitle">Network Connectivity</text>
+
+  <!-- Ethernet/WiFi -->
+  <rect x="450" y="100" width="300" height="80" class="network" rx="5"/>
+  <text x="600" y="135" class="label" style="font-weight: bold;">Network Interface</text>
+  <text x="600" y="155" class="label">Ethernet or WiFi (USB)</text>
+
+  <!-- Data Connections -->
+  <!-- REM to MQTT -->
+  <path d="M 420 150 L 450 120" class="bi-arrow" stroke-width="2"/>
+  <text x="430" y="120" class="label">MQTT</text>
+  <text x="430" y="135" class="label">1883/8883</text>
+
+  <!-- REM to WebSocket -->
+  <path d="M 420 200 L 450 250" class="bi-arrow" stroke-width="2"/>
+  <text x="430" y="225" class="label">WS</text>
+  <text x="430" y="240" class="label">8080</text>
+
+  <!-- REM to REST -->
+  <path d="M 420 250 L 450 380" class="bi-arrow" stroke-width="2"/>
+  <text x="430" y="315" class="label">REST</text>
+  <text x="430" y="330" class="label">80/443</text>
+
+  <!-- Network to External -->
+  <path d="M 750 120 L 900 120" class="net-arrow"/>
+  <path d="M 750 140 L 900 270" class="net-arrow"/>
+  <path d="M 750 160 L 900 400" class="net-arrow"/>
+  <path d="M 750 140 L 900 530" class="net-arrow"/>
+
+  <!-- DETAILED CONNECTION MATRIX -->
+  <text x="600" y="670" class="subtitle" style="font-size: 13px;">Connection Protocol Details</text>
+
+  <g style="font-size: 11px;">
+    <rect x="50" y="700" width="1300" height="150" class="legend-box" style="fill: #f5f5f5; stroke: #999"/>
+    
+    <text x="70" y="720" class="label" style="font-weight: bold;">MQTT Broker Connection:</text>
+    <text x="70" y="737" class="label">Broker Address: configurable | Port: 1883 (TCP) or 8883 (TLS) | Authentication: MQTT Auth / Certificates</text>
+    <text x="70" y="754" class="label">Topics: /rem/triggers/*, /rem/feeds/*, /rem/status/* | QoS: 0-2 | Retain: Enabled for status</text>
+
+    <text x="70" y="775" class="label" style="font-weight: bold;">WebSocket Server (Internal):</text>
+    <text x="70" y="792" class="label">Endpoint: ws://&lt;ip&gt;:8080/ws | Real-time event streaming | Client-side: Socket.io library</text>
+    <text x="70" y="809" class="label">Events: device.state, trigger.fired, connection.active | Authentication: Token-based | Heartbeat: 30s ping/pong</text>
+
+    <text x="70" y="830" class="label" style="font-weight: bold;">REST API / njspc:</text>
+    <text x="70" y="847" class="label">Endpoints: /api/devices, /api/triggers, /api/connections | Methods: GET, POST, PUT, DELETE | Response: JSON</text>
+  </g>
+
+  <!-- DEPLOYMENT VARIANTS -->
+  <text x="600" y="880" class="label" style="font-weight: bold; font-size: 12px;">Supported Hardware Variants: Raspberry Pi 3B+/4B/5, BeagleBone Black/Green, Jetson Nano</text>
+</svg>
