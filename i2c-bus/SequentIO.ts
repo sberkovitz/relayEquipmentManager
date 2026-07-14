@@ -94,7 +94,7 @@ export class SequentIO extends i2cDeviceBase {
         try {
             for (let i = 1; i <= count; i++) {
                 let ch = arr.find(elem => elem.id === i);
-                if (typeof ch === 'undefined') arr.push({ id: i, name: `${label} #${i}`, type: type, enabled: false });
+                if (typeof ch === 'undefined') arr.push({ id: i, name: `${label} #${i}`, type: type, enabled: false, invert: false });
             }
             arr.sort((a, b) => { return a.id - b.id });
             arr.length = count;
@@ -619,6 +619,7 @@ export class SequentMegaIND extends SequentIO {
             for (let i = 0; i < chan.length; i++) {
                 let ch = chan[i];
                 let v = ((1 << (ch.id - 1)) & val) > 0 ? 1 : 0;
+                if (ch.invert === true) v = v ? 0 : 1;
                 if (ch.value !== v) {
                     ch.value = v;
                     webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: { inputs: { inDigital: [ch] } } });
@@ -994,6 +995,7 @@ export class SequentMegaBAS extends SequentIO {
                 let ch = this.in0_10[i];
                 if (ch.type === 'DIN') {
                     let v = ((1 << (ch.id - 1)) & val) > 0 ? 1 : 0;
+                    if (ch.invert === true) v = v ? 0 : 1;
                     if (ch.value !== v || ch.ioType !== 'digital') {
                         ch.ioType = 'digital';
                         ch.value = v;
@@ -1421,6 +1423,7 @@ export class Sequent4RelIND extends SequentIO {
                     // NOTE: This bit is set when the input is off.  This is a bit
                     // of a goober thing.  The same is not true for the relays.
                     let v = !utils.makeBool((1 << i) & val);
+                    if (input.invert === true) v = !v;
                     if (input.value !== v) {
                         input.value = v;
                         webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: { inputs: { inDigital: [input]} } });
@@ -1899,6 +1902,7 @@ export class Sequent4Rel4In extends SequentIO {
                 let input = this.inDigital[i];
                 if (input.enabled) {
                     let v = utils.makeBool((1 << i) & val);
+                    if (input.invert === true) v = !v;
                     if (input.value !== v) {
                         input.value = v;
                         webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: { inputs: { inDigital: [input] } } });
@@ -2655,6 +2659,7 @@ export class SequentHomeAuto extends SequentIO {
                 let input = this.inDigital[i];
                 if (input.enabled) {
                     let v = utils.makeBool((1 << i) & val);
+                    if (input.invert === true) v = !v;
                     if (input.value !== v) {
                         input.value = v;
                         webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: { inputs: { inDigital: [input] } } });
@@ -2966,6 +2971,7 @@ export class SequentSmartRelayInd extends Sequent4Rel4In {
                 let chD = this.inDigital[i];
                 if (chD && chD.enabled) {
                     let v = utils.makeBool((1 << i) & dinVal);
+                    if (chD.invert === true) v = !v;
                     if (chD.value !== v) {
                         chD.value = v;
                         webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: { inputs: { inDigital: [chD] } } });
