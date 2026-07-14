@@ -3546,7 +3546,19 @@
         { "name": "inUniversal1.resistance", "desc": "Universal in #1 thermistor resistance", "maxSamples": 50 },
         { "name": "inUniversal2.resistance", "desc": "Universal in #2 thermistor resistance", "maxSamples": 50 },
         { "name": "inUniversal3.resistance", "desc": "Universal in #3 thermistor resistance", "maxSamples": 50 },
-        { "name": "inUniversal4.resistance", "desc": "Universal in #4 thermistor resistance", "maxSamples": 50 }
+        { "name": "inUniversal4.resistance", "desc": "Universal in #4 thermistor resistance", "maxSamples": 50 },
+        { "name": "inUniversal1.tempC", "desc": "Universal in #1 T10k temperature (\u00b0C)", "maxSamples": 50 },
+        { "name": "inUniversal2.tempC", "desc": "Universal in #2 T10k temperature (\u00b0C)", "maxSamples": 50 },
+        { "name": "inUniversal3.tempC", "desc": "Universal in #3 T10k temperature (\u00b0C)", "maxSamples": 50 },
+        { "name": "inUniversal4.tempC", "desc": "Universal in #4 T10k temperature (\u00b0C)", "maxSamples": 50 },
+        { "name": "inUniversal1.tempF", "desc": "Universal in #1 T10k temperature (\u00b0F)", "maxSamples": 50 },
+        { "name": "inUniversal2.tempF", "desc": "Universal in #2 T10k temperature (\u00b0F)", "maxSamples": 50 },
+        { "name": "inUniversal3.tempF", "desc": "Universal in #3 T10k temperature (\u00b0F)", "maxSamples": 50 },
+        { "name": "inUniversal4.tempF", "desc": "Universal in #4 T10k temperature (\u00b0F)", "maxSamples": 50 },
+        { "name": "inUniversal1.tempK", "desc": "Universal in #1 T10k temperature (\u00b0K)", "maxSamples": 50 },
+        { "name": "inUniversal2.tempK", "desc": "Universal in #2 T10k temperature (\u00b0K)", "maxSamples": 50 },
+        { "name": "inUniversal3.tempK", "desc": "Universal in #3 T10k temperature (\u00b0K)", "maxSamples": 50 },
+        { "name": "inUniversal4.tempK", "desc": "Universal in #4 T10k temperature (\u00b0K)", "maxSamples": 50 }
       ],
       "inputs": [
         {

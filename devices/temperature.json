@@ -850,6 +850,21 @@
           "name": "adcValue",
           "desc": "ADC Value",
           "dataType": "number"
+        },
+        {
+          "name": "tempC",
+          "desc": "Temperature (\u00b0C)",
+          "dataType": "number"
+        },
+        {
+          "name": "tempF",
+          "desc": "Temperature (\u00b0F)",
+          "dataType": "number"
+        },
+        {
+          "name": "tempK",
+          "desc": "Temperature (\u00b0K)",
+          "dataType": "number"
         }
       ],
       "outputs": [
@@ -979,7 +994,7 @@
                   "field": {
                     "type": "staticField",
                     "labelText": "Input Value",
-                    "binding": "values.adcValue",
+                    "binding": "values.inputValue",
                     "dataType": "number",
                     "fmtMask": "#,##0.####",
                     "style": {
@@ -996,22 +1011,33 @@
                 },
                 {
                   "field": {
-                    "type": "staticField",
-                    "labelText": "Resistance",
-                    "binding": "values.resistance",
-                    "units": "ohms",
-                    "dataType": "number",
-                    "fmtMask": "#,##0.####",
+                    "type": "div",
+                    "cssClass": "pnl-resistance-reading",
                     "style": {
-                      "fontSize": ".77em",
                       "display": "block"
-                    },
-                    "labelAttrs": {
-                      "style": {
-                        "width": "7em"
+                    }
+                  },
+                  "options": [
+                    {
+                      "field": {
+                        "type": "staticField",
+                        "labelText": "Resistance",
+                        "binding": "values.resistance",
+                        "units": "ohms",
+                        "dataType": "number",
+                        "fmtMask": "#,##0.####",
+                        "style": {
+                          "fontSize": ".77em",
+                          "display": "block"
+                        },
+                        "labelAttrs": {
+                          "style": {
+                            "width": "7em"
+                          }
+                        }
                       }
                     }
-                  }
+                  ]
                 },
                 {
                   "field": {
@@ -1129,11 +1155,26 @@
                         "val": "ohms",
                         "name": "Resistance",
                         "desc": "Resistance in ohms"
+                      },
+                      {
+                        "val": "tempC",
+                        "name": "Temperature (\u00b0C)",
+                        "desc": "Pre-calculated temperature in Celsius"
+                      },
+                      {
+                        "val": "tempF",
+                        "name": "Temperature (\u00b0F)",
+                        "desc": "Pre-calculated temperature in Fahrenheit"
+                      },
+                      {
+                        "val": "tempK",
+                        "name": "Temperature (\u00b0K)",
+                        "desc": "Pre-calculated temperature in Kelvin"
                       }
                     ]
                   },
                   "fieldEvents": {
-                    "selchanged": "console.log(evt.newItem); var pnl = $(evt.currentTarget).parents('fieldset:first'); pnl.children('div.pnl-input-options').not('.pnl-' + evt.newItem.val + 'input-options').hide(); pnl.children('.pnl-' + evt.newItem.val + 'input-options').show();"
+                    "selchanged": "var pnl = $(evt.currentTarget).parents('fieldset:first'); pnl.children('div.pnl-input-options').not('.pnl-' + evt.newItem.val + 'input-options').hide(); pnl.children('.pnl-' + evt.newItem.val + 'input-options').show(); $(evt.currentTarget).closest('.picTabContent').find('.pnl-resistance-reading').toggle(['raw','volt'].indexOf(evt.newItem.val) >= 0);"
                   }
                 },
                 {

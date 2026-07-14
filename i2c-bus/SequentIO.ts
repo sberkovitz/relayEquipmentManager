@@ -2900,7 +2900,7 @@ export class SequentSmartRelayInd extends Sequent4Rel4In {
                         units = '';
                     } else if (chU.type === 'T10k') {
                         // Read resistance and temperature for this channel only.
-                        let rOhm = (this.i2c.isMock) ? Math.round(10000 + (1000 * Math.random())) : await this.readWord(this.registers.thRes.reg + (2 * i));
+                        let rOhm = (this.i2c.isMock) ? Math.round((10000 + (1000 * Math.random())) * 10) : await this.readWord(this.registers.thRes.reg + (2 * i));
                         let tC = (this.i2c.isMock) ? Math.round((20 + 5 * Math.random()) * 100) : await this.readWord(this.registers.thTemp.reg + (2 * i));
                         // Firmware scales: TH_RES * 0.1 = ohms; TH_TEMP / 100 = degC (signed 16 bit).
                         if (typeof tC === 'number' && tC > 32767) tC = tC - 65536;
@@ -3031,6 +3031,11 @@ export class SequentSmartRelayInd extends Sequent4Rel4In {
             if (parr.length > 1) {
                 if (parr[1] === 'value') return chan.value;
                 if (parr[1] === 'resistance') return chan.resistance;
+                if (chan.type === 'T10k') {
+                    if (parr[1] === 'tempc') return chan.value;
+                    if (parr[1] === 'tempf') return utils.convert.temperature.convertUnits(chan.value, 'c', 'f');
+                    if (parr[1] === 'tempk') return utils.convert.temperature.convertUnits(chan.value, 'c', 'k');
+                }
                 return super.getValue(parr[1]);
             }
             return chan;

@@ -9,7 +9,6 @@ export class Thermistor10k extends GenericDeviceBase {
     public setValue(prop, value) {
         let replaceSymbols = /(?:\]\.|\[|\.)/g
         let _prop = prop.indexOf(',') > -1 ? prop.replace(replaceSymbols, ',').split(',') : prop;
-        // Execute a function, load a module, or ...
         let dt = this.device.getDeviceType();
         let val = value;
         if (typeof dt.inputs !== 'undefined') {
@@ -20,17 +19,29 @@ export class Thermistor10k extends GenericDeviceBase {
                         if (typeof value.value !== 'undefined') val = value.value;
                         else if (typeof value.adcValue !== 'undefined') val = value.adcValue;
                         break;
-
                 }
             }
         }
-
-        //let obj = this.device.values;
-        // for (let i = 0; i < _prop.length; i++) {
-        //     obj = obj[_prop[i]];
-        // }
-        // obj = value;
         this.device.values[_prop] = val;
+
+        // If a named temperature slot is used as the feed input, handle it directly —
+        // the prop name itself carries the unit, so no inputType config is needed.
+        const lp = (typeof prop === 'string') ? prop.toLowerCase() : '';
+        if (lp === 'tempc' || lp === 'tempf' || lp === 'tempk') {
+            const device = this.device;
+            const inUnit = lp.slice(4); // 'c', 'f', or 'k'
+            device.values.units = device.options.units;
+            device.values.inputValue = val;
+            device.values.inputUnits = inUnit === 'c' ? '\u00B0C' : inUnit === 'f' ? '\u00B0F' : '\u00B0K';
+            device.values.tempC = utils.convert.temperature.convertUnits(val, inUnit, 'c');
+            device.values.tempF = utils.convert.temperature.convertUnits(val, inUnit, 'f');
+            device.values.tempK = utils.convert.temperature.convertUnits(val, inUnit, 'k');
+            device.values.temperature = utils.convert.temperature.convertUnits(val, inUnit, (device.values.units || 'F').toLowerCase()) + (device.options.calibration || 0);
+            webApp.emitToClients('genericDataValues', { id: device.id, typeId: device.typeId, values: this.values });
+            this.emitFeeds();
+            return;
+        }
+
         this.convertValue(val);
         webApp.emitToClients('genericDataValues', { id: this.device.id, typeId: this.device.typeId, values: this.values });
         this.emitFeeds();
@@ -38,8 +49,38 @@ export class Thermistor10k extends GenericDeviceBase {
     public convertValue(value: number) {
         let device = this.device;
         let maps = AnalogDevices.maps;
-        device.values.inputUnits = device.options.inputType === 'raw' ? '' : device.options.inputType === 'volt' ? 'volts' : device.options.inputResistanceUnits === 1000 ? 'kOhms' : 'ohms';
         device.values.units = device.options.units;
+        // inputValue always reflects the raw received value for display in the Readings panel.
+        device.values.inputValue = device.values.adcValue;
+
+        // Pre-calculated temperature: adcValue is already in the named unit.
+        // Derive all three scales, apply calibration, skip resistance math entirely.
+        switch (device.options.inputType) {
+            case 'tempC':
+                device.values.inputUnits = '\u00B0C';
+                device.values.tempC = device.values.adcValue;
+                device.values.tempK = utils.convert.temperature.convertUnits(device.values.adcValue, 'c', 'k');
+                device.values.tempF = utils.convert.temperature.convertUnits(device.values.adcValue, 'c', 'f');
+                device.values.temperature = utils.convert.temperature.convertUnits(device.values.adcValue, 'c', device.values.units || 'F') + (device.options.calibration || 0);
+                return value;
+            case 'tempF':
+                device.values.inputUnits = '\u00B0F';
+                device.values.tempF = device.values.adcValue;
+                device.values.tempK = utils.convert.temperature.convertUnits(device.values.adcValue, 'f', 'k');
+                device.values.tempC = utils.convert.temperature.convertUnits(device.values.adcValue, 'f', 'c');
+                device.values.temperature = utils.convert.temperature.convertUnits(device.values.adcValue, 'f', device.values.units || 'F') + (device.options.calibration || 0);
+                return value;
+            case 'tempK':
+                device.values.inputUnits = '\u00B0K';
+                device.values.tempK = device.values.adcValue;
+                device.values.tempC = utils.convert.temperature.convertUnits(device.values.adcValue, 'k', 'c');
+                device.values.tempF = utils.convert.temperature.convertUnits(device.values.adcValue, 'k', 'f');
+                device.values.temperature = utils.convert.temperature.convertUnits(device.values.adcValue, 'k', device.values.units || 'F') + (device.options.calibration || 0);
+                return value;
+        }
+
+        // Resistance-based path: convert ADC value → resistance → temperature.
+        device.values.inputUnits = device.options.inputType === 'raw' ? '' : device.options.inputType === 'volt' ? 'volts' : device.options.inputResistanceUnits === 1000 ? 'kOhms' : 'ohms';
         device.values.maxVal = (device.options.inputType === 'raw') ? (1 << device.options.inputBitness) : device.options.inputType === 'volt' ? device.options.vccRef : 10000;
         switch (device.options.inputType) {
             case 'ohms':
@@ -70,5 +111,3 @@ export class Thermistor10k extends GenericDeviceBase {
         return value;
     }
 }
-
-
