@@ -844,7 +844,7 @@
       "precision": 2,
       "deviceClass": "Thermistor10k",
       "module": "./Temperature",
-      "convertValue": "device.values.inputUnits = device.options.inputType === 'raw' ? '' : device.options.inputType === 'volt' ? 'volts' : device.options.inputResistanceUnits === 1000 ? 'kOhms': 'ohms'; device.values.units = device.options.units; device.values.maxVal = (device.options.inputType === 'raw') ? (1 << device.options.inputBitness) : device.options.inputType === 'volt' ? device.options.vccRef : 10000; device.values.resistance = (device.options.inputType === 'ohms') ? device.values.adcValue * device.options.inputResistanceUnits : (10000 * device.values.adcValue) / (device.values.maxVal - device.values.adcValue); device.values.temperature = (Math.round(maps.thermistor10k.interpolate(device.values.resistance, device.values.units || 'F') * 100)/100) + (device.options.calibration || 0);",
+      "convertValue": "",
       "inputs": [
         {
           "name": "adcValue",
@@ -1011,6 +1011,22 @@
                 },
                 {
                   "field": {
+                    "type": "staticField",
+                    "labelText": "Received As",
+                    "binding": "values.inputMode",
+                    "style": {
+                      "fontSize": ".77em",
+                      "display": "block"
+                    },
+                    "labelAttrs": {
+                      "style": {
+                        "width": "7em"
+                      }
+                    }
+                  }
+                },
+                {
+                  "field": {
                     "type": "div",
                     "cssClass": "pnl-resistance-reading",
                     "style": {
@@ -1026,6 +1042,7 @@
                         "units": "ohms",
                         "dataType": "number",
                         "fmtMask": "#,##0.####",
+                        "emptyMask": "--",
                         "style": {
                           "fontSize": ".77em",
                           "display": "block"
@@ -1088,7 +1105,7 @@
             {
               "field": {
                 "type": "fieldset",
-                "legend": "Input Value",
+                "legend": "Generic / External Input",
                 "style": {
                   "display": "block",
                   "verticalAlign": "top"
@@ -1098,7 +1115,7 @@
                 {
                   "field": {
                     "type": "pickList",
-                    "labelText": "Input Type",
+                    "labelText": "Generic Input Type",
                     "binding": "options.inputType",
                     "value": "raw",
                     "required": true,

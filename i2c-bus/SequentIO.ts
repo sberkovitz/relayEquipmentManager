@@ -9,7 +9,7 @@ import { Buffer } from "buffer";
 import { i2cDeviceBase } from "./I2cBus";
 import { webApp } from "../web/Server";
 import { I2cDevice, DeviceBinding } from "../boards/Controller";
-import { LatchTimers } from "../devices/AnalogDevices";
+import { LatchTimers, AnalogDevices } from "../devices/AnalogDevices";
 import * as fs from 'fs';
 
 export class SequentIO extends i2cDeviceBase {
@@ -848,7 +848,14 @@ export class SequentMegaIND extends SequentIO {
         category = '0-10v Analog Input';
         for (let i = 0; i < this.in0_10.length; i++) {
             let chan = this.in0_10[i];
-            if (chan.enabled) desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}`, category: category });
+            if (chan.enabled) {
+                desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}`, category: category });
+                if (chan.type === 'T10k') {
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°F)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempF`, category: category });
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°C)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempC`, category: category });
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°K)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempK`, category: category });
+                }
+            }
         }
         category = '4-20mA Input';
         for (let i = 0; i < this.in4_20.length; i++) {
@@ -912,7 +919,21 @@ export class SequentMegaIND extends SequentIO {
                     return;
                 }
                 let chan = iarr[ord - 1];
-                return (parr.length > 1) ? super.getValue(parr[1], chan) : chan;
+                if (parr.length > 1) {
+                    const sub = parr[1];
+                    if (chan.type === 'T10k') {
+                        const resistanceOhms = (chan.value || 0) * 1000;
+                        const maps = AnalogDevices.maps;
+                        const tempK = typeof maps['thermistor10k'] !== 'undefined'
+                            ? Math.round(maps['thermistor10k'].interpolate(resistanceOhms, 'K') * 100) / 100
+                            : utils.convert.temperature.shart3(resistanceOhms, 0.001125308852122, 0.000234711863267, 0.000000085663516, 'K');
+                        if (sub === 'tempc') return utils.convert.temperature.convertUnits(tempK, 'k', 'c');
+                        if (sub === 'tempf') return utils.convert.temperature.convertUnits(tempK, 'k', 'f');
+                        if (sub === 'tempk') return tempK;
+                    }
+                    return super.getValue(sub, chan);
+                }
+                return chan;
         }
     }
 }
@@ -1237,7 +1258,14 @@ export class SequentMegaBAS extends SequentIO {
                     category = '0-10v Input';
                     break;
             }
-            if (chan.enabled) desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}`, category: category });
+            if (chan.enabled) {
+                desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}`, category: category });
+                if (chan.type === 'T10k') {
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°F)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempF`, category: category });
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°C)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempC`, category: category });
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°K)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempK`, category: category });
+                }
+            }
         }
         category = '0-10v Output';
         for (let i = 0; i < this.out0_10.length; i++) {
@@ -1289,7 +1317,21 @@ export class SequentMegaBAS extends SequentIO {
                     return;
                 }
                 let chan = iarr[ord - 1];
-                return (parr.length > 1) ? super.getValue(parr[1], chan) : chan;
+                if (parr.length > 1) {
+                    const sub = parr[1];
+                    if (chan.type === 'T10k') {
+                        const resistanceOhms = (chan.value || 0) * 1000;
+                        const maps = AnalogDevices.maps;
+                        const tempK = typeof maps['thermistor10k'] !== 'undefined'
+                            ? Math.round(maps['thermistor10k'].interpolate(resistanceOhms, 'K') * 100) / 100
+                            : utils.convert.temperature.shart3(resistanceOhms, 0.001125308852122, 0.000234711863267, 0.000000085663516, 'K');
+                        if (sub === 'tempc') return utils.convert.temperature.convertUnits(tempK, 'k', 'c');
+                        if (sub === 'tempf') return utils.convert.temperature.convertUnits(tempK, 'k', 'f');
+                        if (sub === 'tempk') return tempK;
+                    }
+                    return super.getValue(sub, chan);
+                }
+                return chan;
         }
     }
 }
@@ -3008,6 +3050,11 @@ export class SequentSmartRelayInd extends Sequent4Rel4In {
             if (chan.type === 'AC') category = 'AC Detect Input';
             else if (chan.type === 'T10k') category = '10k Thermistor';
             desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:inUniversal:${i + 1}`, category: category });
+            if (chan.type === 'T10k') {
+                desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°F)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:inUniversal${i + 1}.tempF`, category: category });
+                desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°C)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:inUniversal${i + 1}.tempC`, category: category });
+                desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°K)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:inUniversal${i + 1}.tempK`, category: category });
+            }
         }
         for (let i = 0; i < this.relays.length; i++) {
             let relay = this.relays[i];
