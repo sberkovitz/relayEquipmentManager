@@ -1,7 +1,16 @@
-﻿{
-  "name": "Raspberry Pi 4B - Bookworm OS",
-  "desc": "Tested on a 4B running Bookworm",
+{
+  "name": "Raspberry Pi (Bookworm)",
+  "desc": "Raspberry Pi 4B or Pi 5 running Bookworm OS",
   "icon": "fab fa-raspberry-pi",
+  "gpioBackends": {
+    "sysfs": {
+      "base": 512
+    },
+    "libgpiod": {
+      "chipRegex": "pinctrl-bcm",
+      "lineSource": "bcm"
+    }
+  },
   "overlays": [
     {
       "name": "spi0",
@@ -681,13 +690,13 @@
           "id": 36,
           "name": "BCM 16",
           "type": "gpio",
-          "gpioId": 16
+          "gpioId": 528
         },
         {
           "id": 37,
           "name": "BCM 26",
           "type": "gpio",
-          "gpioId": 528
+          "gpioId": 538
         },
         {
           "id": 38,

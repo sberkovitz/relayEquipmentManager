@@ -4,12 +4,12 @@
 import { logger } from "../logger/Logger";
 import { vMaps, valueMap, utils } from "../boards/Constants";
 import { setTimeout, clearTimeout } from "timers";
-import * as extend from "extend";
+const extend = require('extend');
 import { Buffer } from "buffer";
 import { i2cDeviceBase } from "./I2cBus";
 import { webApp } from "../web/Server";
 import { I2cDevice, DeviceBinding } from "../boards/Controller";
-import { LatchTimers } from "../devices/AnalogDevices";
+import { LatchTimers, AnalogDevices } from "../devices/AnalogDevices";
 import * as fs from 'fs';
 
 export class SequentIO extends i2cDeviceBase {
@@ -94,7 +94,7 @@ export class SequentIO extends i2cDeviceBase {
         try {
             for (let i = 1; i <= count; i++) {
                 let ch = arr.find(elem => elem.id === i);
-                if (typeof ch === 'undefined') arr.push({ id: i, name: `${label} #${i}`, type: type, enabled: false });
+                if (typeof ch === 'undefined') arr.push({ id: i, name: `${label} #${i}`, type: type, enabled: false, invert: false });
             }
             arr.sort((a, b) => { return a.id - b.id });
             arr.length = count;
@@ -325,7 +325,7 @@ export class SequentIO extends i2cDeviceBase {
         catch (err) { this.logError(err, 'Error Polling Device Values'); }
         finally { this._timerRead = setTimeout(async () => { await this.pollReadings(); }, this.options.readInterval) }
     }
-    public get suspendPolling(): boolean { if (this._suspendPolling > 0) logger.warn(`${this.device.name} Suspend Polling ${this._suspendPolling}`); return this._suspendPolling > 0; }
+    public get suspendPolling(): boolean { if (this._suspendPolling > 0) logger.silly(`${this.device.name} Suspend Polling ${this._suspendPolling}`); return this._suspendPolling > 0; }
     public set suspendPolling(val: boolean) {
         //if(!val) logger.warn(`${this.device.name} Cancel Suspend Start ${this._suspendPolling} - End ${Math.max(0, this._suspendPolling + (val ? 1 : -1))}`);
         this._suspendPolling = Math.max(0, this._suspendPolling + (val ? 1 : -1));
@@ -619,6 +619,7 @@ export class SequentMegaIND extends SequentIO {
             for (let i = 0; i < chan.length; i++) {
                 let ch = chan[i];
                 let v = ((1 << (ch.id - 1)) & val) > 0 ? 1 : 0;
+                if (ch.invert === true) v = v ? 0 : 1;
                 if (ch.value !== v) {
                     ch.value = v;
                     webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: { inputs: { inDigital: [ch] } } });
@@ -848,7 +849,14 @@ export class SequentMegaIND extends SequentIO {
         category = '0-10v Analog Input';
         for (let i = 0; i < this.in0_10.length; i++) {
             let chan = this.in0_10[i];
-            if (chan.enabled) desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}`, category: category });
+            if (chan.enabled) {
+                desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}`, category: category });
+                if (chan.type === 'T10k') {
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°F)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempF`, category: category });
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°C)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempC`, category: category });
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°K)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempK`, category: category });
+                }
+            }
         }
         category = '4-20mA Input';
         for (let i = 0; i < this.in4_20.length; i++) {
@@ -912,7 +920,21 @@ export class SequentMegaIND extends SequentIO {
                     return;
                 }
                 let chan = iarr[ord - 1];
-                return (parr.length > 1) ? super.getValue(parr[1], chan) : chan;
+                if (parr.length > 1) {
+                    const sub = parr[1];
+                    if (chan.type === 'T10k') {
+                        const resistanceOhms = (chan.value || 0) * 1000;
+                        const maps = AnalogDevices.maps;
+                        const tempK = typeof maps['thermistor10k'] !== 'undefined'
+                            ? Math.round(maps['thermistor10k'].interpolate(resistanceOhms, 'K') * 100) / 100
+                            : utils.convert.temperature.shart3(resistanceOhms, 0.001125308852122, 0.000234711863267, 0.000000085663516, 'K');
+                        if (sub === 'tempc') return utils.convert.temperature.convertUnits(tempK, 'k', 'c');
+                        if (sub === 'tempf') return utils.convert.temperature.convertUnits(tempK, 'k', 'f');
+                        if (sub === 'tempk') return tempK;
+                    }
+                    return super.getValue(sub, chan);
+                }
+                return chan;
         }
     }
 }
@@ -924,6 +946,7 @@ export class SequentMegaBAS extends SequentIO {
         out4_20: { name: '4-20mA output', idOffset: 5 },
         in0_10pm: { name: '+- 10v input', idOffset: 13 }
     }
+    protected triacRegs = { val: 0, set: 1, clear: 2 };
     public async initAsync(deviceType): Promise<boolean> {
         try {
             // The Sequent cards pick registers at random between cards.  Not ideal but we simply override
@@ -942,6 +965,7 @@ export class SequentMegaBAS extends SequentIO {
             // Set up all the I/O channels.  We want to create a values data structure for all potential inputs and outputs.
             this.ensureIOChannels('IN 0-10', 'AIN', this.in0_10, 8);
             this.ensureIOChannels('OUT 0-10', 'AOUT', this.out0_10, 4);
+            this.ensureRelays('Triac', this.relays, 4);
             await this.initOutputs(this.out0_10, this.set0_10Output);
 
             if (this.device.isActive) await this.getRS485Port();
@@ -971,6 +995,7 @@ export class SequentMegaBAS extends SequentIO {
                 let ch = this.in0_10[i];
                 if (ch.type === 'DIN') {
                     let v = ((1 << (ch.id - 1)) & val) > 0 ? 1 : 0;
+                    if (ch.invert === true) v = v ? 0 : 1;
                     if (ch.value !== v || ch.ioType !== 'digital') {
                         ch.ioType = 'digital';
                         ch.value = v;
@@ -1040,6 +1065,7 @@ export class SequentMegaBAS extends SequentIO {
     public async takeReadings(): Promise<boolean> {
         try {
             await this.readDryContact();
+            await this.readTriacs();
             // Read all the active inputs and outputs.
             await this.readIOChannels(this.in0_10, this.get0_10Input);
             await this.readIOChannels(this.out0_10, this.get0_10Output);
@@ -1049,11 +1075,119 @@ export class SequentMegaBAS extends SequentIO {
         }
         catch (err) { this.logError(err, 'Error taking device readings'); }
     }
+    protected async readTriacs() {
+        try {
+            let val = (this.i2c.isMock) ? Math.floor(255 * Math.random()) & 0x0f : await this.readByte(this.triacRegs.val);
+            for (let i = 0; i < this.relays.length; i++) {
+                let relay = this.relays[i];
+                if (relay.enabled) {
+                    let v = utils.makeBool((1 << i) & val);
+                    if (relay.invert === true) v = !v;
+                    if (relay.state !== v) {
+                        relay.state = v;
+                        relay.tripTime = new Date().getTime();
+                        webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, relayStates: [relay] });
+                    }
+                }
+            }
+        }
+        catch (err) { logger.error(`${this.device.name} error reading triac states: ${err.message}`); }
+    }
+    protected async setTriacState(id: number, state: boolean) {
+        try {
+            let reg = state ? this.triacRegs.set : this.triacRegs.clear;
+            let bit = 1 << (id - 1);
+            if (!this.i2c.isMock) {
+                let buff = Buffer.from([reg, bit]);
+                await this.i2c.writeI2cBlock(this.device.address, reg, 1, Buffer.from([bit]));
+            }
+            let relay = this.relays[id - 1];
+            relay.state = state;
+            relay.tripTime = new Date().getTime();
+            webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, relayStates: [relay] });
+        }
+        catch (err) { logger.error(`${this.device.name} error setting triac ${id}: ${err.message}`); }
+    }
+    public async setRelayState(opts): Promise<{ id: number, name: string, state: boolean }> {
+        let relay = this.relays.find(elem => { return elem.id === opts.id });
+        if (typeof relay === 'undefined') return Promise.reject(new Error(`${this.device.name} - Invalid Triac id: ${opts.id}`));
+        try {
+            let newState = utils.makeBool(opts.state);
+            let target = relay.invert === true ? !newState : newState;
+            await this.setTriacState(relay.id, target);
+            return relay;
+        }
+        catch (err) { return Promise.reject(err); }
+    }
+    public async setDeviceState(binding: string | DeviceBinding, data: any): Promise<any> {
+        try {
+            let bind = (typeof binding === 'string') ? new DeviceBinding(binding) : binding;
+            let relayId = parseInt(bind.params[0], 10);
+            if (isNaN(relayId)) return Promise.reject(new Error(`setDeviceState: Invalid triac Id ${bind.params[0]}`));
+            let relay = this.relays.find(elem => elem.id === relayId);
+            if (typeof relay === 'undefined') return Promise.reject(new Error(`setDeviceState: Could not find triac Id ${bind.params[0]}`));
+            if (!relay.enabled) return Promise.reject(new Error(`setDeviceState: Triac [${relay.name}] is not enabled.`));
+            let newState;
+            switch (typeof data) {
+                case 'boolean':
+                    newState = data;
+                    break;
+                case 'number':
+                    newState = data === 1 ? true : data === 0 ? false : relay.state;
+                    break;
+                case 'string':
+                    switch (data.toLowerCase()) {
+                        case 'tripped':
+                        case 'true':
+                        case 'on':
+                        case '1':
+                            newState = true;
+                            break;
+                        case 'untripped':
+                        case 'false':
+                        case '0':
+                        case 'off':
+                            newState = false;
+                            break;
+                    }
+                    break;
+                case 'object':
+                    if (typeof data.state !== 'undefined') newState = utils.makeBool(data.state);
+                    else if (typeof data.isOn !== 'undefined') newState = utils.makeBool(data.isOn);
+                    else newState = false;
+                    break;
+                default:
+                    newState = typeof data.state !== 'undefined' ? utils.makeBool(data.state) : typeof data.isOn !== 'undefined' ? utils.makeBool(data.isOn) : false;
+                    break;
+            }
+            let oldState = relay.state;
+            if (newState !== oldState) {
+                await this.setRelayState({ id: relayId, state: newState });
+            }
+            return extend(true, {}, relay, { oldState: oldState, latchDuration: new Date().getTime() - relay.tripTime });
+        } catch (err) { return Promise.reject(err); }
+    }
+    public async getDeviceState(binding: string | DeviceBinding): Promise<any> {
+        try {
+            let bind = (typeof binding === 'string') ? new DeviceBinding(binding) : binding;
+            if (bind.params.length === 0) return Promise.reject(new Error(`getDeviceState: You must supply a triac id to get its state`));
+            await this.takeReadings();
+            let relayId = parseInt(bind.params[0], 10);
+            if (isNaN(relayId)) return Promise.reject(new Error(`getDeviceState: Invalid triac Id ${bind.params[0]}`));
+            let relay = this.relays.find(elem => elem.id === relayId);
+            if (typeof relay === 'undefined') return Promise.reject(new Error(`getDeviceState: Could not find triac Id ${bind.params[0]}`));
+            if (!relay.enabled) return Promise.reject(new Error(`getDeviceState: Triac [${relay.name}] is not enabled.`));
+            return relay.state;
+        } catch (err) { return Promise.reject(err); }
+    }
     public async setOptions(opts): Promise<any> {
         try {
             this.suspendPolling = true;
             if (typeof opts.name !== 'undefined' && this.device.name !== opts.name) this.options.name = this.device.name = opts.name;
             if (typeof opts.rs485 !== 'undefined' && this.checkDiff(this.rs485, opts.rs485)) await this.setRS485Port(opts.rs485);
+            if (typeof opts.relays !== 'undefined') {
+                this.relays = opts.relays;
+            }
             return Promise.resolve(this.options);
         }
         catch (err) { this.logError(err); Promise.reject(err); }
@@ -1098,6 +1232,9 @@ export class SequentMegaBAS extends SequentIO {
                     }
                 }
             }
+            if (typeof vals.relays !== 'undefined') {
+                await this.setRelayOptions(vals.relays);
+            }
             return Promise.resolve(this.options);
         }
         catch (err) { this.logError(err); Promise.reject(err); }
@@ -1123,12 +1260,23 @@ export class SequentMegaBAS extends SequentIO {
                     category = '0-10v Input';
                     break;
             }
-            if (chan.enabled) desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}`, category: category });
+            if (chan.enabled) {
+                desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}`, category: category });
+                if (chan.type === 'T10k') {
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°F)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempF`, category: category });
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°C)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempC`, category: category });
+                    desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°K)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i+1}.tempK`, category: category });
+                }
+            }
         }
         category = '0-10v Output';
         for (let i = 0; i < this.out0_10.length; i++) {
             let chan = this.out0_10[i];
             if (chan.enabled) desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:out0_10.${i+1}`, category: category });
+        }
+        for (let i = 0; i < this.relays.length; i++) {
+            let relay = this.relays[i];
+            if (relay.enabled) desc.push({ type: 'i2c', isActive: this.device.isActive, name: relay.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:${relay.id}`, category: 'Triacs' });
         }
         return desc;
     }
@@ -1171,7 +1319,21 @@ export class SequentMegaBAS extends SequentIO {
                     return;
                 }
                 let chan = iarr[ord - 1];
-                return (parr.length > 1) ? super.getValue(parr[1], chan) : chan;
+                if (parr.length > 1) {
+                    const sub = parr[1];
+                    if (chan.type === 'T10k') {
+                        const resistanceOhms = (chan.value || 0) * 1000;
+                        const maps = AnalogDevices.maps;
+                        const tempK = typeof maps['thermistor10k'] !== 'undefined'
+                            ? Math.round(maps['thermistor10k'].interpolate(resistanceOhms, 'K') * 100) / 100
+                            : utils.convert.temperature.shart3(resistanceOhms, 0.001125308852122, 0.000234711863267, 0.000000085663516, 'K');
+                        if (sub === 'tempc') return utils.convert.temperature.convertUnits(tempK, 'k', 'c');
+                        if (sub === 'tempf') return utils.convert.temperature.convertUnits(tempK, 'k', 'f');
+                        if (sub === 'tempk') return tempK;
+                    }
+                    return super.getValue(sub, chan);
+                }
+                return chan;
         }
     }
 }
@@ -1261,6 +1423,7 @@ export class Sequent4RelIND extends SequentIO {
                     // NOTE: This bit is set when the input is off.  This is a bit
                     // of a goober thing.  The same is not true for the relays.
                     let v = !utils.makeBool((1 << i) & val);
+                    if (input.invert === true) v = !v;
                     if (input.value !== v) {
                         input.value = v;
                         webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: { inputs: { inDigital: [input]} } });
@@ -1739,6 +1902,7 @@ export class Sequent4Rel4In extends SequentIO {
                 let input = this.inDigital[i];
                 if (input.enabled) {
                     let v = utils.makeBool((1 << i) & val);
+                    if (input.invert === true) v = !v;
                     if (input.value !== v) {
                         input.value = v;
                         webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: { inputs: { inDigital: [input] } } });
@@ -2105,6 +2269,8 @@ export class SequentHomeAuto extends SequentIO {
 
         hwVerMajor: { reg: 0x78, name: 'HW_VER_MAJOR', desc: 'Hardware Version Major', r: true, w: false },
         hwVerMinor: { reg: 0x79, name: 'HW_VER_MINOR', desc: 'Hardware Version Minor', r: true, w: false },
+        fwRevMajor: { reg: 0x7A, name: 'REV_MAJ', desc: 'Revision Major', r: true, w: false },
+        fwRevMinor: { reg: 0x7B, name: 'REV_MIN', desc: 'Revision Minor', r: true, w: false },        
         fwVerMajor: { reg: 0x80, name: 'FW_VER_MAJOR', desc: 'Firmware Version Major', r: true, w: false },
         fwVerMinor: { reg: 0x81, name: 'FW_VER_MINOR', desc: 'Firmware Version Minor', r: true, w: false },
         fifoSize: { reg: 0x82, name: 'FIFO_SIZE', desc: 'Debug FIFO Size', r: true, w: false, size: 2 },
@@ -2116,12 +2282,13 @@ export class SequentHomeAuto extends SequentIO {
         optoEncCount: { reg: 0xB3, name: 'OPTO_ENC_COUNT', desc: 'Opto Encoder Count', r: true, w: false, size: 8 },
         gpioEncCount: { reg: 0xBB, name: 'GPIO_ENC_COUNT', desc: 'GPIO Encoder Count', r: true, w: false, size: 8 },
         owDevice: { reg: 0xC4, name: 'OW_DEVICE', desc: 'One-wire Device', r: true, w: false },
-        owRomCode: { reg: 0xC5, name: 'OW_ROM_CODE', desc: 'One-wire ROM Code', r: true, w: false, size: 64 },
+        owRomCode: { reg: 0xC5, name: 'OW_ROM_CODE', desc: 'One-wire ROM Code', r: true, w: false, size: 8 },
         owStart: { reg: 0xCD, name: 'OW_SEARCH_START', desc: 'One-wire Search Start', r: true, w: false },
         owT1: { reg: 0xCE, name: 'OW_T1', desc: 'One-wire T1', r: true, w: false },
         owT16: { reg: 0xCD, name: 'OW_T16', desc: 'One-wire T16', r: true, w: false },
         slaveBuffSize: { reg: 0xED, name: 'SLAVE_BUFF_SIZE', desc: 'Slave Buffer Size', r: true, w: false }
     }
+    protected latches = new LatchTimers();    
     protected async sendCommand(command: number[]): Promise<{ bytesWritten: number, buffer: Buffer }> {
         try {
             let buffer = Buffer.from(command);
@@ -2155,14 +2322,13 @@ export class SequentHomeAuto extends SequentIO {
             // Set up all the I/O channels.  We want to create a values data structure for all potential inputs and outputs.
             this.ensureIOChannels('IN Digital', 'DIN', this.inDigital, 8);
             this.ensureIOChannels('IN Analog', 'AIN', this.inAnalog, 8);
-            this.ensureIOChannels('IN 0-10', 'AIN', this.in0_10, 4);
             this.ensureIOChannels('OUT 0-10', 'AOUT', this.out0_10, 4);
             this.ensureIOChannels('OUT Open Drain', 'ODOUT', this.outDrain, 4);
             this.ensureRelays('Relay', this.relays, 8);
             await this.initRegisters();
             await this.getHwFwVer();
-            //await this.initRelayStates();
-            return true;
+            await this.initRelayStates();
+            return Promise.resolve(true)
         }
         catch (err) { this.logError(err); return Promise.resolve(false); }
         finally {
@@ -2238,8 +2404,16 @@ export class SequentHomeAuto extends SequentIO {
             // We need only the upper nibble of this byte.  So set the lower nibble to 0.  These are input values.
             let byte = states & 0xff;
             let tries = 0;
-            let reg = this.info.registers.find(elem => elem.register === this.registers.relayVal.reg) || { name: 'RELAY_VAL', reg: 0x00, desc: 'Relay Value', value: 0 };
+            let reg = this.info.registers.find(elem => elem.register === this.registers.relayVal.reg) || { 
+                name: 'RELAY_VAL',
+                code: "relayVal", 
+                reg: 0x00, 
+                desc: 'Relay Value',
+                size: 1, 
+                value: 0 
+            };
             this.relays.sort((a, b) => { return a.id - b.id; });
+            let origState = reg.value;
             // Not sure why but the Sequent command line code retries 10 times if it does not get the relay set.
             while (tries++ < 10 && byte != (reg.value & 0xff)) {
                 if (!this.i2c.isMock) await this.sendCommand([this.registers.relayVal.reg, byte]);
@@ -2256,6 +2430,9 @@ export class SequentHomeAuto extends SequentIO {
                 if (tries > 1) logger.warn(`Retry #${tries - 1} setting relay states ${this.device.name} expected ${byte} but got ${reg.value & 0xf0}`);
             }
             if ((reg.value & 0xff) !== byte && !this.i2c.isMock) logger.error(`Error setting relay states ${this.device.name} register did not echo ${reg.value & 0xf0} <> ${byte}`);
+            if (origState !== reg.value) {
+                webApp.emitToClients('i2cDeviceInformation', { bus: this.i2c.busNumber, address: this.device.address, info: { registers: this.device.info.registers } });
+            }
         }
         catch (err) { logger.error(`Error setting relay states ${this.device.name}`); }
     }
@@ -2299,15 +2476,123 @@ export class SequentHomeAuto extends SequentIO {
         }
         catch (err) { return Promise.reject(err) };
     }
-    public async getStatus(): Promise<boolean> {
+    public async getStatus(): Promise<boolean> { return true; }  
+    public async setDeviceState(binding: string | DeviceBinding, data: any): Promise<any> {
         try {
-            this.suspendPolling = true;
-            await this.getRaspVolts();
-            await this.getCpuTemp();
-            return true;
-        }
-        catch (err) { logger.error(`Error getting info ${typeof err !== 'undefined' ? err.message : ''}`); return Promise.reject(err); }
-        finally { this.suspendPolling = false; }
+            let bind = (typeof binding === 'string') ? new DeviceBinding(binding) : binding;
+            //i2c:${ this.i2c.busId }:${ this.device.id }: inDigital.${ i + 1 }
+            // We need to know what relay we are referring to.
+            // i2c:1:24:3
+            // i2c:1:24:inDigital:1 <= This is an example of an input we need to reject if the user is attempting to set a digital input.
+            let relayId = parseInt(bind.params[0], 10);
+            if (isNaN(relayId)) {
+                if (bind.params.length > 0 && bind.params[0].toLowerCase() === 'indigital') return Promise.reject(new Error(`setDeviceState: Inputs are read only ${bind.params[0]}`));
+                return Promise.reject(new Error(`setDeviceState: Invalid relay Id ${bind.params[0]}`));
+            }
+            let relay = this.relays.find(elem => elem.id === relayId);
+            if (typeof relay === 'undefined') return Promise.reject(new Error(`setDeviceState: Could not find relay Id ${bind.params[0]}`));
+            if (!relay.enabled) return Promise.reject(new Error(`setDeviceState: Relay [${relay.name}] is not enabled.`));
+            let latch = (typeof data.latch !== 'undefined') ? parseInt(data.latch, 10) : -1;
+            if (isNaN(latch)) return Promise.reject(new Error(`setDeviceState: Relay [${relay.name}] latch data is invalid ${data.latch}.`));
+            this.latches.clearLatch(relayId);
+            let newState;
+            switch (typeof data) {
+                case 'boolean':
+                    newState = data;
+                    break;
+                case 'number':
+                    newState = data === 1 ? true : data === 0 ? false : relay.state;
+                    break;
+                case 'string':
+                    switch (data.toLowerCase()) {
+                        case 'tripped':
+                        case 'true':
+                        case 'on':
+                        case '1':
+                            newState = true;
+                        case 'untripped':
+                        case 'false':
+                        case '0':
+                        case 'off':
+                            newState = false;
+                            break;
+                    }
+                    break;
+                case 'object':
+                    if (Array.isArray(data) && data.length > 0) {
+                        this.suspendPolling = true;
+                        let nOffs = 0;
+                        let nOns = 0;
+                        // This is a sequence.
+                        // [{isOn: true, timeout: 1000}, {isOn: false, timeout: 1000}]
+                        let onDelay = relay.sequenceOnDelay || 0;
+                        let offDelay = relay.sequenceOffDelay || 0;
+                        for (let i = 0; i < data.length; i++) {
+                            let seq = data[i];
+                            let state = utils.makeBool(seq.state || seq.isOn);
+                            if (!state) nOffs++;
+                            else nOns++;
+                            await this.setRelayState({ id: relayId, state: state });
+                            //logger.info(`Sequencing relay: ${ relay.name } state: ${ state } delay: ${ seq.timeout + (state ? onDelay : offDelay) }`)
+                            if (seq.timeout) await utils.wait(seq.timeout + (state ? onDelay : offDelay));
+                            newState = state;
+                        }
+                        logger.info(`Sent a total of Ons:${nOns} and Offs:${nOffs} to relay`);
+                        this.suspendPolling = false;
+                    }
+                    else {
+                        if (typeof data.state !== 'undefined') newState = utils.makeBool(data.state);
+                        else if (typeof data.isOn !== 'undefined') newState = utils.makeBool(data.isOn);
+                        else if (typeof data.isDiverted !== 'undefined') newState = utils.makeBool(data.isDiverted);
+                        else newState = false;
+                    }
+                    break;
+                default:
+                    newState = typeof data.state !== 'undefined' ? utils.makeBool(data.state) : typeof data.isOn !== 'undefined' ? utils.makeBool(data.isOn) : false;
+                    break;
+            }
+            let oldState = relay.state;
+            if (newState !== oldState) {
+                await this.setRelayState({ id: relayId, state: newState });
+            }
+            if (latch > 0) {
+                this.latches.setLatch(relayId, async () => {
+                    try {
+                        await this.setRelayState({ id: relayId, state: !newState })
+                        logger.warn(`Relay Latch timer expired ${relay.name}: ${latch}ms`);
+                    } catch (err) { logger.error(`Error processing latch timer`); }
+                }, latch);
+            }
+            return extend(true, {}, relay, { oldState: oldState, latchDuration: new Date().getTime() - relay.tripTime });
+        } catch (err) { return Promise.reject(err); }
+    }
+    public async getDeviceState(binding: string | DeviceBinding): Promise<any> {
+        try {
+            let bind = (typeof binding === 'string') ? new DeviceBinding(binding) : binding;
+            // We need to know what relay we are referring to.
+            // i2c:1:24:3
+            // i2c:1:24:inDigital:1 <= This is an example of an input we need to reject if the user is attempting to set a digital input.
+            if (bind.params.length === 0) return Promise.reject(new Error(`getDeviceState: You must supply an input or relay to get its state`));
+            await this.takeReadings();
+            if (bind.params[0].toLowerCase() === 'indigital') {
+                if (bind.params.length < 2) return Promise.reject(new Error(`getDeviceState: You must supply a digital input id to get its state`));
+                let inputId = parseInt(bind.params[1], 10);
+                let input = this.inDigital.find(elem => elem.id === inputId);
+                if (typeof input === 'undefined') return Promise.reject(new Error(`getDeviceState: Could not find digital input Id ${bind.params[1]}`));
+                if (!input.enabled) return Promise.reject(new Error(`getDeviceState: Input [${input.name}] is not enabled.`));
+                return input.value;
+            }
+            else {
+                let relayId = parseInt(bind.params[0], 10);
+                if (isNaN(relayId)) {
+                    return Promise.reject(new Error(`getDeviceState: Invalid relay Id ${bind.params[0]}`));
+                }
+                let relay = this.relays.find(elem => elem.id === relayId);
+                if (typeof relay === 'undefined') return Promise.reject(new Error(`getDeviceState: Could not find relay Id ${bind.params[0]}`));
+                if (!relay.enabled) return Promise.reject(new Error(`getDeviceState: Relay [${relay.name}] is not enabled.`));
+                return relay.state;
+            }
+        } catch (err) { return Promise.reject(err); }
     }
     protected async get0_10Output(id) {
         try {
@@ -2361,7 +2646,6 @@ export class SequentHomeAuto extends SequentIO {
         } catch (err) { logger.error(`${this.device.name} error writing Open Drain output ${id}: ${err.message}`); }
 
     }
-
     protected async readDigitalIn(): Promise<boolean> {
         try {
 
@@ -2375,6 +2659,7 @@ export class SequentHomeAuto extends SequentIO {
                 let input = this.inDigital[i];
                 if (input.enabled) {
                     let v = utils.makeBool((1 << i) & val);
+                    if (input.invert === true) v = !v;
                     if (input.value !== v) {
                         input.value = v;
                         webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: { inputs: { inDigital: [input] } } });
@@ -2436,7 +2721,7 @@ export class SequentHomeAuto extends SequentIO {
         }
         catch (err) { this.logError(err, 'Error reading relay states'); }
     }
-    public async takeReadings(): Promise<boolean> {
+        public async takeReadings(): Promise<boolean> {
         try {
             await this.readDigitalIn();
             await this.readRelayStates();
@@ -2448,16 +2733,21 @@ export class SequentHomeAuto extends SequentIO {
             return true;
         }
         catch (err) { this.logError(err, 'Error taking device readings'); }
-    }
+    }    
     public async setOptions(opts): Promise<any> {
         try {
             this.suspendPolling = true;
             if (typeof opts.name !== 'undefined' && this.device.name !== opts.name) this.options.name = this.device.name = opts.name;
+            if (typeof opts.relays !== 'undefined') {
+                this.relays = opts.relays;
+                await this.initRegisters();
+            }
+            if (typeof opts.readInterval === 'number') this.options.readInterval = opts.readInterval;
             return Promise.resolve(this.options);
         }
         catch (err) { this.logError(err); Promise.reject(err); }
         finally { this.suspendPolling = false; }
-    }
+    }  
     public async setIOChannels(data): Promise<any> {
         try {
             if (typeof data.values !== 'undefined') {
@@ -2496,30 +2786,25 @@ export class SequentHomeAuto extends SequentIO {
     }
     public getDeviceDescriptions(dev) {
         let desc = [];
-        let category = typeof dev !== 'undefined' ? dev.category : 'unknown';
-        category = '0-10v Input';
-        for (let i = 0; i < this.in0_10.length; i++) {
-            let chan = this.in0_10[i];
-            switch (chan.type) {
-                case 'T10k':
-                    category = '10k Thermistor';
-                    break;
-                case 'T1k':
-                    category = '1k Thermistor';
-                    break;
-                case 'DIN':
-                    category = 'Dry Contact';
-                    break;
-                default:
-                    category = '0-10v Input';
-                    break;
-            }
-            if (chan.enabled) desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:in0_10.${i + 1}`, category: category });
+        for (let i = 0; i < this.inDigital.length; i++) {
+            let chan = this.inDigital[i];
+            desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:inDigital:${i + 1}`, category: 'Digital Input' });
         }
-        category = '0-10v Output';
+        for (let i = 0; i < this.inAnalog.length; i++) {
+            let chan = this.inAnalog[i];
+            desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:inAnalog:${i + 1}`, category: 'Analog Input' });
+        }
         for (let i = 0; i < this.out0_10.length; i++) {
             let chan = this.out0_10[i];
-            if (chan.enabled) desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:out0_10.${i + 1}`, category: category });
+            desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:out0_10:${i + 1}`, category: '0-10 Output' });
+        }
+        for (let i = 0; i < this.outDrain.length; i++) {
+            let chan = this.outDrain[i];
+            desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:outDrain:${i + 1}`, category: 'Drain Output' });
+        }                                     
+        for (let i = 0; i < this.relays.length; i++) {
+            let relay = this.relays[i];
+            desc.push({ type: 'i2c', isActive: this.device.isActive, name: relay.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:${relay.id}`, category: 'Relays' });
         }
         return desc;
     }
@@ -2536,16 +2821,12 @@ export class SequentHomeAuto extends SequentIO {
                 return utils.convert.temperature.convertUnits(this.info.cpuTemp, 'C', 'F');
             case 'cputempk':
                 return utils.convert.temperature.convertUnits(this.info.cpuTemp, 'C', 'K');
-            case 'pivoltage':
-                return this.info.raspiVolts;
-            case 'fwversion':
-                return this.info.fwVersion;
             default:
                 let iarr;
                 if (p.startsWith('out0_10')) iarr = this.out0_10;
-                else if (p.startsWith('in0_10')) iarr = this.in0_10;
                 else if (p.startsWith('outdrain')) iarr = this.outDrain;
                 else if (p.startsWith('inanalog')) iarr = this.inAnalog;
+                else if (p.startsWith('indigital')) iarr = this.inDigital;                
                 else if (p.startsWith('relay')) iarr = this.relays;
                 if (typeof iarr === 'undefined') {
                     logger.error(`${this.device.name} error getting I/O channel ${prop}`);
@@ -2565,5 +2846,263 @@ export class SequentHomeAuto extends SequentIO {
                 if (p.startsWith('relayval')) chan = chan.state;
                 return (parr.length > 1) ? super.getValue(parr[1], chan) : chan;
         }
+    }   
+}
+// Sequent Smart Relays with Universal Inputs (SM-I-029, 4-REL-IND v2).
+// Same I2C protocol family as 4rel4in but firmware exposes universal inputs
+// (10K thermistor / AC / digital), per-relay current sensing, RS485, and a
+// hardware watchdog.  Register layout derived from src/4rel4in.h enum.
+export class SequentSmartRelayInd extends Sequent4Rel4In {
+    protected registers = {
+        relayVal:        { reg: 0,   name: 'RELAY_VAL',         desc: 'Relay Value',                    r: true,  w: true },
+        setRelay:        { reg: 1,   name: 'RELAY_SET',         desc: 'Set Relay',                      r: false, w: true },
+        clearRelay:      { reg: 2,   name: 'RELAY_CLR',         desc: 'Clear Relay',                    r: false, w: true },
+        digitalIn:       { reg: 3,   name: 'DIG_IN',            desc: 'Digital In',                     r: true,  w: false },
+        analogIn:        { reg: 4,   name: 'AC_IN',             desc: 'AC Filtered In',                 r: true,  w: false },
+        ledVal:          { reg: 5,   name: 'LED_VAL',           desc: 'LED Value',                      r: true,  w: true },
+        setLed:          { reg: 6,   name: 'LED_SET',           desc: 'Set LED',                        r: false, w: true },
+        clearLed:        { reg: 7,   name: 'LED_CLR',           desc: 'Clear LED',                      r: false, w: true },
+        ledMode:         { reg: 8,   name: 'LED_MODE',          desc: 'LED Mode',                       r: true,  w: true },
+        edgeEnable:      { reg: 9,   name: 'EDGE_ENABLE',       desc: 'Edge Enable',                    r: true,  w: true },
+        encEnable:       { reg: 10,  name: 'ENC_ENABLE',        desc: 'Encoder Enable',                 r: true,  w: true },
+        scanFreq:        { reg: 11,  name: 'SCAN_FREQ',         desc: 'Scan Frequency',                 r: true,  w: true,  size: 2 },
+        pulseCountStart: { reg: 13,  name: 'PULSE_COUNT',       desc: 'Pulse Counts',                   r: true,  w: false, size: 16 },
+        pulsePerSec:     { reg: 29,  name: 'PPS',               desc: 'Pulse Per Sec',                  r: true,  w: false, size: 8 },
+        encCount:        { reg: 37,  name: 'ENC_COUNT',         desc: 'Encoder Counts',                 r: true,  w: false, size: 8 },
+        pwmInFill:       { reg: 45,  name: 'PWM_IN_FILL',       desc: 'PWM In Fill Factor',             r: true,  w: false, size: 8 },
+        inFreq:          { reg: 53,  name: 'IN_FREQ',           desc: 'Input Frequency',                r: true,  w: false, size: 8 },
+        modbusSettings:  { reg: 65,  name: 'MODBUS_SETTINGS',   desc: 'RS485/MODBUS Settings',          r: true,  w: true,  size: 5 },
+        modbusIdOffset:  { reg: 69,  name: 'MODBUS_ID_OFFSET',  desc: 'Modbus ID Offset',               r: true,  w: true },
+        extiEnable:      { reg: 70,  name: 'EXTI_ENABLE',       desc: 'External Interrupt Enable',      r: true,  w: true },
+        button:          { reg: 71,  name: 'BUTTON',            desc: 'Button (state | latch)',         r: true,  w: false },
+        crtIn:           { reg: 72,  name: 'CRT_IN',            desc: 'Relay Current (signed A/100)',   r: true,  w: false, size: 8 },
+        crtRms:          { reg: 80,  name: 'CRT_RMS',           desc: 'Relay RMS Current (A/100)',      r: true,  w: false, size: 8 },
+        calibValue:      { reg: 88,  name: 'CALIB_VALUE',       desc: 'Calibration Value',              r: true,  w: true,  size: 4 },
+        calibChannel:    { reg: 92,  name: 'CALIB_CHANNEL',     desc: 'Calibration Channel',            r: true,  w: true },
+        calibKey:        { reg: 93,  name: 'CALIB_KEY',         desc: 'Calibration Key',                r: false, w: true },
+        calibStatus:     { reg: 94,  name: 'CALIB_STATUS',      desc: 'Calibration Status',             r: true,  w: false },
+        wdtReset:        { reg: 95,  name: 'WDT_RESET',         desc: 'Watchdog Reload',                r: false, w: true },
+        wdtIntervalSet:  { reg: 96,  name: 'WDT_INTERVAL_SET',  desc: 'WDT Interval Set',               r: false, w: true,  size: 2 },
+        wdtIntervalGet:  { reg: 98,  name: 'WDT_INTERVAL_GET',  desc: 'WDT Interval Get',               r: true,  w: false, size: 2 },
+        wdtInitSet:      { reg: 100, name: 'WDT_INIT_SET',      desc: 'WDT Init Interval Set',          r: false, w: true,  size: 2 },
+        wdtInitGet:      { reg: 102, name: 'WDT_INIT_GET',      desc: 'WDT Init Interval Get',          r: true,  w: false, size: 2 },
+        wdtResetCount:   { reg: 104, name: 'WDT_RESET_COUNT',   desc: 'WDT Reset Count',                r: true,  w: false, size: 2 },
+        wdtClearCount:   { reg: 106, name: 'WDT_CLEAR_COUNT',   desc: 'WDT Clear Reset Count',          r: false, w: true,  size: 2 },
+        wdtPwrOffSet:    { reg: 107, name: 'WDT_PWROFF_SET',    desc: 'WDT Power Off Interval Set',     r: false, w: true,  size: 4 },
+        wdtPwrOffGet:    { reg: 111, name: 'WDT_PWROFF_GET',    desc: 'WDT Power Off Interval Get',     r: true,  w: false, size: 4 },
+        diagRaspV:       { reg: 115, name: 'DIAG_RASP_V',       desc: 'Diag Raspberry Pi Voltage',      r: true,  w: false, size: 2 },
+        diagSnsVcc:      { reg: 117, name: 'DIAG_SNS_VCC',      desc: 'Diag Sensor VCC',                r: true,  w: false, size: 2 },
+        hwVerMajor:      { reg: 0x78, name: 'HW_MAJ',           desc: 'Hardware Version Major',         r: true,  w: false },
+        hwVerMinor:      { reg: 0x79, name: 'HW_MIN',           desc: 'Hardware Version Minor',         r: true,  w: false },
+        fwRevMajor:      { reg: 0x7A, name: 'REV_MAJ',          desc: 'Revision Major',                 r: true,  w: false },
+        fwRevMinor:      { reg: 0x7B, name: 'REV_MIN',          desc: 'Revision Minor',                 r: true,  w: false },
+        thRes:           { reg: 0x7C, name: 'TH_RES',           desc: 'Thermistor Resistance (x0.1)',   r: true,  w: false, size: 8 },
+        thTemp:          { reg: 0x84, name: 'TH_TEMP',          desc: 'Thermistor Temperature (x0.01)', r: true,  w: false, size: 8 },
+        relayFailsafeEn: { reg: 0x8C, name: 'FAILSAFE_EN',      desc: 'Relay Failsafe Enable',          r: true,  w: true },
+        relayFailsafeVal:{ reg: 0x8D, name: 'FAILSAFE_VAL',     desc: 'Relay Failsafe Value',           r: true,  w: true }
+    };
+    public get inUniversal(): any[] { return typeof this.inputs.inUniversal === 'undefined' ? this.inputs.inUniversal = [] : this.inputs.inUniversal; }
+    public async initAsync(deviceType): Promise<boolean> {
+        try {
+            this.stopPolling();
+            // The base class sets regs.rs485Settings = 65; align with our register table.
+            this.regs.rs485Settings = this.registers.modbusSettings.reg;
+            if (typeof this.options.readInterval === 'undefined') this.options.readInterval = 3000;
+            this.options.readInterval = Math.max(500, this.options.readInterval);
+            if (typeof this.device.options.name !== 'string' || this.device.options.name.length === 0) this.device.name = this.device.options.name = deviceType.name;
+            else this.device.name = this.device.options.name;
+            // Universal inputs on this board can be DIN (dry contact), AC (50Hz filtered), or T10k (thermistor).
+            this.ensureIOChannels('IN Universal', 'DIN', this.inUniversal, 4);
+            // Keep inDigital for parity / legacy bindings; mirrored from the same registers.
+            this.ensureIOChannels('IN Digital', 'DIN', this.inDigital, 4);
+            this.ensureRelays('Relay', this.relays, 4);
+            await this.initRegisters();
+            await this.getHwFwVer();
+            if (this.device.isActive) await this.getRS485Port();
+            await this.initRelayStates();
+            return Promise.resolve(true);
+        }
+        catch (err) { this.logError(err); return Promise.resolve(false); }
+        finally { setTimeout(() => { this.pollReadings(); }, 5000); }
+    }
+    public async takeReadings(): Promise<boolean> {
+        try {
+            if (typeof this.info.registers === 'undefined') this.ensureRegisters();
+            // Digital input bitmap (raw, level state)
+            let regDin = this.info.registers.find(elem => elem.register === this.registers.digitalIn.reg);
+            let dinVal = (this.i2c.isMock) ? ((255 * Math.random()) & 0x0f) : await this.readCommand(regDin.register);
+            if (this.hasFault) dinVal = 0x0f;
+            // AC-filtered bitmap (50Hz signal detection)
+            let regAc = this.info.registers.find(elem => elem.register === this.registers.analogIn.reg);
+            let acVal = (this.i2c.isMock) ? ((255 * Math.random()) & 0x0f) : await this.readCommand(regAc.register);
+            if (this.hasFault) acVal = 0;
+            for (let i = 0; i < 4; i++) {
+                let chU = this.inUniversal[i];
+                if (chU && chU.enabled) {
+                    let v;
+                    let units;
+                    let ioType: string = 'digital';
+                    if (chU.type === 'AC') {
+                        v = utils.makeBool((1 << i) & acVal);
+                        units = '';
+                    } else if (chU.type === 'T10k') {
+                        // Read resistance and temperature for this channel only.
+                        let rOhm = (this.i2c.isMock) ? Math.round((10000 + (1000 * Math.random())) * 10) : await this.readWord(this.registers.thRes.reg + (2 * i));
+                        let tC = (this.i2c.isMock) ? Math.round((20 + 5 * Math.random()) * 100) : await this.readWord(this.registers.thTemp.reg + (2 * i));
+                        // Firmware scales: TH_RES * 0.1 = ohms; TH_TEMP / 100 = degC (signed 16 bit).
+                        if (typeof tC === 'number' && tC > 32767) tC = tC - 65536;
+                        chU.resistance = (rOhm || 0) * 0.1;
+                        v = (tC || 0) / 100;
+                        units = '\u00B0C';
+                        ioType = 'analog';
+                    } else {
+                        // Default treat as DIN
+                        v = utils.makeBool((1 << i) & dinVal);
+                        units = '';
+                    }
+                    if (chU.value !== v || chU.ioType !== ioType) {
+                        chU.value = v;
+                        chU.ioType = ioType;
+                        if (typeof units !== 'undefined') chU.units = units;
+                        webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: { inputs: { inUniversal: [chU] } } });
+                    }
+                }
+                // Mirror raw digital state into inDigital so legacy bindings keep working.
+                let chD = this.inDigital[i];
+                if (chD && chD.enabled) {
+                    let v = utils.makeBool((1 << i) & dinVal);
+                    if (chD.invert === true) v = !v;
+                    if (chD.value !== v) {
+                        chD.value = v;
+                        webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, values: { inputs: { inDigital: [chD] } } });
+                    }
+                }
+            }
+            if (regDin && regDin.value !== dinVal) regDin.value = dinVal;
+            if (regAc && regAc.value !== acVal) regAc.value = acVal;
+            // Relays
+            let regRelay = this.info.registers.find(elem => elem.register === this.registers.relayVal.reg);
+            let rVal = (this.i2c.isMock) ? regRelay.value : await this.readCommand(regRelay.register);
+            if (this.hasFault) rVal = 0x0f;
+            for (let i = 0; i < 4; i++) {
+                let relay = this.relays[i];
+                if (relay && relay.enabled) {
+                    let v = utils.makeBool((1 << i) & rVal);
+                    if (relay.invert === true) v = !v;
+                    // Per-relay current sensing.
+                    let crt = (this.i2c.isMock) ? Math.round(100 * Math.random()) : await this.readWord(this.registers.crtIn.reg + (2 * i));
+                    if (typeof crt === 'number' && crt > 32767) crt = crt - 65536;
+                    let crtRms = (this.i2c.isMock) ? Math.round(100 * Math.random()) : await this.readWord(this.registers.crtRms.reg + (2 * i));
+                    let amps = (crt || 0) / 100;
+                    let ampsRms = (crtRms || 0) / 100;
+                    let changed = relay.state !== v || relay.amps !== amps || relay.ampsRms !== ampsRms;
+                    if (changed) {
+                        if (relay.state !== v) relay.tripTime = new Date().getTime();
+                        relay.state = v;
+                        relay.amps = amps;
+                        relay.ampsRms = ampsRms;
+                        webApp.emitToClients('i2cDataValues', { bus: this.i2c.busNumber, address: this.device.address, relayStates: [relay] });
+                    }
+                }
+            }
+            if (regRelay && regRelay.value !== rVal) {
+                regRelay.value = rVal;
+                webApp.emitToClients('i2cDeviceInformation', { bus: this.i2c.busNumber, address: this.device.address, info: { registers: this.device.info.registers } });
+            }
+            this.emitFeeds();
+            return true;
+        } catch (err) { this.logError(err, 'Error taking device readings'); }
+    }
+    public async setOptions(opts): Promise<any> {
+        try {
+            this.suspendPolling = true;
+            if (typeof opts.name !== 'undefined' && this.device.name !== opts.name) this.options.name = this.device.name = opts.name;
+            if (typeof opts.relays !== 'undefined') {
+                this.relays = opts.relays;
+                await this.initRegisters();
+            }
+            if (typeof opts.rs485 !== 'undefined' && this.checkDiff(this.rs485, opts.rs485)) await this.setRS485Port(opts.rs485);
+            if (typeof opts.readInterval === 'number') this.options.readInterval = opts.readInterval;
+            return Promise.resolve(this.options);
+        }
+        catch (err) { this.logError(err); Promise.reject(err); }
+        finally { this.suspendPolling = false; }
+    }
+    public async setValues(vals): Promise<any> {
+        try {
+            this.suspendPolling = true;
+            if (typeof vals.inputs !== 'undefined') {
+                if (typeof vals.inputs.inDigital !== 'undefined') await this.setIOChannelOptions(vals.inputs.inDigital, this.inDigital);
+                if (typeof vals.inputs.inUniversal !== 'undefined') await this.setIOChannelOptions(vals.inputs.inUniversal, this.inUniversal);
+            }
+            if (typeof vals.relays !== 'undefined') {
+                await this.setRelayOptions(vals.relays);
+            }
+            return Promise.resolve(this.options);
+        }
+        catch (err) { this.logError(err); Promise.reject(err); }
+        finally { this.suspendPolling = false; }
+    }
+    public getDeviceDescriptions(dev) {
+        let desc = [];
+        for (let i = 0; i < this.inDigital.length; i++) {
+            let chan = this.inDigital[i];
+            if (chan.enabled) desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:inDigital:${i + 1}`, category: 'Digital Input' });
+        }
+        for (let i = 0; i < this.inUniversal.length; i++) {
+            let chan = this.inUniversal[i];
+            if (!chan.enabled) continue;
+            let category = 'Digital Input';
+            if (chan.type === 'AC') category = 'AC Detect Input';
+            else if (chan.type === 'T10k') category = '10k Thermistor';
+            desc.push({ type: 'i2c', isActive: this.device.isActive, name: chan.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:inUniversal:${i + 1}`, category: category });
+            if (chan.type === 'T10k') {
+                desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°F)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:inUniversal${i + 1}.tempF`, category: category });
+                desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°C)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:inUniversal${i + 1}.tempC`, category: category });
+                desc.push({ type: 'i2c', isActive: this.device.isActive, name: `${chan.name} (°K)`, binding: `i2c:${this.i2c.busId}:${this.device.id}:inUniversal${i + 1}.tempK`, category: category });
+            }
+        }
+        for (let i = 0; i < this.relays.length; i++) {
+            let relay = this.relays[i];
+            desc.push({ type: 'i2c', isActive: this.device.isActive, name: relay.name, binding: `i2c:${this.i2c.busId}:${this.device.id}:${relay.id}`, category: 'Relays' });
+        }
+        return desc;
+    }
+    public getValue(prop: string) {
+        let p = prop.toLowerCase();
+        if (p.startsWith('inuniversal')) {
+            // inuniversalN or inuniversal.N or inuniversalN.value/.resistance
+            let body = p.replace('inuniversal', '');
+            if (body.startsWith('.')) body = body.substring(1);
+            let parr = body.split('.');
+            let ord = parseInt(parr[0], 10);
+            if (isNaN(ord) || ord <= 0 || ord > this.inUniversal.length) {
+                logger.error(`${this.device.name} error getting universal input ${prop} channel out of range.`);
+                return;
+            }
+            let chan = this.inUniversal[ord - 1];
+            if (parr.length > 1) {
+                if (parr[1] === 'value') return chan.value;
+                if (parr[1] === 'resistance') return chan.resistance;
+                if (chan.type === 'T10k') {
+                    if (parr[1] === 'tempc') return chan.value;
+                    if (parr[1] === 'tempf') return utils.convert.temperature.convertUnits(chan.value, 'c', 'f');
+                    if (parr[1] === 'tempk') return utils.convert.temperature.convertUnits(chan.value, 'c', 'k');
+                }
+                return super.getValue(parr[1]);
+            }
+            return chan;
+        }
+        if (p.startsWith('crtrms')) {
+            let ord = parseInt(p.substring(6).replace('.', ''), 10);
+            if (!isNaN(ord) && ord > 0 && ord <= this.relays.length) return this.relays[ord - 1].ampsRms;
+            logger.error(`${this.device.name} error getting RMS current for ${prop}`); return;
+        }
+        if (p.startsWith('crt')) {
+            let ord = parseInt(p.substring(3).replace('.', ''), 10);
+            if (!isNaN(ord) && ord > 0 && ord <= this.relays.length) return this.relays[ord - 1].amps;
+            logger.error(`${this.device.name} error getting current for ${prop}`); return;
+        }
+        return super.getValue(prop);
     }
 }

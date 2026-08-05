@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import { logger } from "../logger/Logger";
 import { vMaps, valueMap, utils } from "../boards/Constants";
 import { setTimeout, clearTimeout } from "timers";
-import * as extend from "extend";
+const extend = require('extend');
 import { Buffer } from "buffer";
 import { i2cDeviceBase } from "./I2cBus";
 import { webApp } from "../web/Server";
@@ -97,13 +97,17 @@ export class SequentSmartFan extends i2cDeviceBase {
                 await this.getHwFwVer();
                 // If this is a cliVer >= 4 we need to export a gpio pin for the fan control.  Another stupid present from Sequent.
                 if (this.cliVer >= 4) {
-                    this.powerPin = await cont.gpio.setPinAsync(1, 32,
-                        {
-                            isActive: true,
-                            name: `${this.device.name} Power`, direction: 'output',
-                            isInverted: false, initialState: 'off', debounceTimeout: 0
-                        }
-                    );
+                    try {
+                        this.powerPin = await cont.gpio.setPinAsync(1, 32,
+                            {
+                                isActive: true,
+                                name: `${this.device.name} Power`, direction: 'output',
+                                isInverted: false, initialState: 'off', debounceTimeout: 0
+                            }
+                        );
+                    } catch (err) {
+                        logger.error(`${this.device.name}: Could not configure GPIO pin 32 for fan power control: ${err.message}`);
+                    }
                 }
                 await this.getFanPower();
                 await this.getFanBlink();
@@ -438,7 +442,7 @@ export class SequentSmartFan extends i2cDeviceBase {
         catch (err) { this.logError(err, 'Error Polling Device Values'); }
         finally { this._timerRead = setTimeout(() => { this.pollReadings(); }, this.options.readInterval) }
     }
-    public get suspendPolling(): boolean { if (this._suspendPolling > 0) logger.warn(`${this.device.name} Suspend Polling ${this._suspendPolling}`); return this._suspendPolling > 0; }
+    public get suspendPolling(): boolean { if (this._suspendPolling > 0) logger.silly(`${this.device.name} Suspend Polling ${this._suspendPolling}`); return this._suspendPolling > 0; }
     public set suspendPolling(val: boolean) {
         this._suspendPolling = Math.max(0, this._suspendPolling + (val ? 1 : -1));
     }

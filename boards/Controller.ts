@@ -1,4 +1,4 @@
-﻿import * as extend from 'extend';
+﻿const extend = require('extend');
 import * as fs from 'fs';
 import * as path from 'path';
 import { setTimeout } from 'timers';
@@ -291,30 +291,46 @@ export class Controller extends ConfigItem {
     private _spiAdcChips;
     private _analogDevices;
     public get dirty(): boolean { return this._isDirty; }
-    public set dirty(val) {
+    public set dirty(val: boolean) {
         this._isDirty = val;
         this._lastUpdated = new Date();
         this.data.lastUpdated = this._lastUpdated.toLocaleString();
+    
         if (this._timerDirty !== null) {
             clearTimeout(this._timerDirty);
             this._timerDirty = null;
         }
+    
         if (this._isDirty) {
-            //logger.silly(`Setting Dirty... ${val} ${new Date().getTime() - this._lastPersisted.getTime()}`);
-            if (new Date().getTime() - this._lastPersisted.getTime() > 10000) //TODO: Set this higher as we don't need to write it every 10 seconds.
-                this.persist();
-            else
-                this._timerDirty = setTimeout(function () { cont.persist(); }, 3000);
+            const elapsed = new Date().getTime() - this._lastPersisted.getTime();
+            if (elapsed > 60000) {
+                this.persist(); // immediate write
+            } else {
+                this._timerDirty = setTimeout(() => this.persist(), 3000); // delayed write
+            }
         }
     }
     public persist() {
         this._isDirty = false;
+    
+        const start = process.hrtime();
+        const timestamp = new Date().toISOString();
+        const tempPath = this.cfgPath + '.tmp';
+    
         logger.debug(`Persisting Configuration data... ${this.cfgPath}`);
-        // Don't overwrite the configuration if we failed during the initialization.
-        Promise.resolve()
-            .then(() => { fs.writeFileSync(this.cfgPath, JSON.stringify(this.data, undefined, 2)); })
-            .then(() => { this._lastPersisted = new Date() })
-            .catch(function (err) { if (err) logger.error('Error writing controller config %s %s', err, this.cfgPath); });
+    
+        try {
+            fs.writeFileSync(tempPath, JSON.stringify(this.data, undefined, 2));
+            fs.renameSync(tempPath, this.cfgPath); // Atomic replace
+    
+            const [seconds, nanoseconds] = process.hrtime(start);
+            const durationMs = seconds * 1000 + nanoseconds / 1e6;
+           //onsole.log(`[${timestamp}] Persisted config in ${durationMs.toFixed(3)}ms`);
+    
+            this._lastPersisted = new Date();
+        } catch (err) {
+            logger.error('Error writing controller config %s %s', err, this.cfgPath);
+        }
     }
     public get controllerType() { return this.getMapVal(this.data.controllerType || 'raspi', vMaps.controllerTypes); }
     public set controllerType(val) {
@@ -1057,6 +1073,16 @@ export class Gpio extends ConfigItem {
     public async setPinAsync(headerId: number, pinId: number, data): Promise<GpioPin> {
         return await this.pins.getPinById(headerId, pinId, true).setPinAsync(data);
     }
+    public async deletePinAsync(headerId: number, pinId: number): Promise<any> {
+        let pin = this.pins.find(elem => elem.headerId === headerId && elem.id === pinId);
+        if (typeof pin === 'undefined')
+            return Promise.reject(new Error(`Pin ${headerId}-${pinId} not found`));
+        pin.isActive = false;
+        try { gpioCont.initPin(pin); }
+        catch (err) { logger.error(`Error uninitializing GPIO pin ${headerId}-${pinId}: ${err.message}`); }
+        this.pins.removePinById(headerId, pinId);
+        return Promise.resolve({ headerId: headerId, pinId: pinId });
+    }
     public async jogPinAsync(headerId: number, pinId: number, data): Promise<GpioPin> {
         return await this.pins.getPinById(headerId, pinId, true).jogPinAsync(data);
     }
@@ -1266,6 +1292,16 @@ export class GpioPinCollection extends ConfigItemCollection<GpioPin> {
             return this.add(data || { id: pinId, headerId: headerId });
         return this.createItem(data || { id: pinId, headerId: headerId });
     }
+    public removePinById(headerId: number, pinId: number): GpioPin {
+        for (let i = this.data.length - 1; i >= 0; i--) {
+            if (this.data[i].headerId === headerId && this.data[i].id === pinId) {
+                let rem = this.createItem(this.data[i]);
+                this.data.splice(i, 1);
+                return rem;
+            }
+        }
+        return undefined;
+    }
 }
 export class GpioPin extends ConfigItem {
     constructor(data) { super(data); }
@@ -1327,7 +1363,8 @@ export class GpioPin extends ConfigItem {
                     await gpioCont.resetPinTriggers(this.headerId, this.id);
                 }
             }
-            gpioCont.initPin(this);
+            try { gpioCont.initPin(this); }
+            catch (err) { logger.error(`Error initializing GPIO pin ${this.headerId}-${this.id}: ${err.message}`); }
             return this;
         } catch (err) { return Promise.reject(new Error(`Error saving pin ${this.headerId}-${this.id}: ${err.message}`)); }
     }

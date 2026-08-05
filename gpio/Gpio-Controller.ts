@@ -1,24 +1,190 @@
-﻿import * as path from "path";
 import * as fs from "fs";
-import * as extend from "extend";
-import * as util from "util";
+const extend = require('extend');
+import { execSync } from 'child_process';
 
 import { setTimeout, clearTimeout } from "timers";
 import { logger } from "../logger/Logger";
 import { webApp } from "../web/Server";
-import { vMaps, valueMap, utils } from "../boards/Constants";
+import { vMaps, utils } from "../boards/Constants";
 import { cont, DeviceBinding, GpioPin, Feed } from "../boards/Controller";
 import { IDevice, DeviceStatus, LatchTimer } from "../devices/AnalogDevices";
 
-import { PinDefinitions } from "../pinouts/Pinouts";
 import { connBroker, ServerConnection } from "../connections/Bindings";
-import { Gpio } from "onoff";
-const gp = require('onoff').Gpio;
+import { BackendContext, BackendPinAddress, GpioBackend, GpioBackendSelection, GpioPlatformInfo, getGpioPlatformInfo, selectGpioBackend } from "./Gpio-Backends";
+
+// Add types for clarity
+export interface SysfsStatus {
+    sysfsAvailable: boolean;
+    sysfsWritable: boolean;
+    onoffAccessible: boolean;
+    libgpiodAccessible: boolean;
+    hasGpioCharacterDevice: boolean;
+    platform: string;
+    isRaspberryPi: boolean;
+    osInfo: string | null;
+    osCodename: string | null;
+    backendId: string | null;
+    backendName: string | null;
+    backendReason: string;
+    recommendations: string[];
+}
+
+export interface SysfsEnableResult {
+    success: boolean;
+    message: string;
+    requiresReboot: boolean;
+    manualInstructions: string[];
+}
 
 export class GpioController {
     constructor(data) { }
     public pins: gpioPinComms[] = [];
+    private backend: GpioBackend = null;
+    private backendReason: string = "";
+    private platformInfo: GpioPlatformInfo;
+    private noReconfigureDirection: boolean = false;
+
+    private get backendContext(): BackendContext {
+        return {
+            controllerType: cont.controllerType?.name || "raspi",
+            pinouts: cont.pinouts
+        };
+    }
+
+    private getBackendAddress(pinDef: GpioPin, pinout: any): BackendPinAddress {
+        if (this.backend) {
+            return this.backend.resolveAddress(pinDef, pinout, this.backendContext);
+        }
+        return { gpio: pinout.gpioId, source: "pinout.gpioId" };
+    }
+
+    private createGpioInstance(pinDef: GpioPin, pinout: any, direction: string, edge: string, opts?: any) {
+        const address = this.getBackendAddress(pinDef, pinout);
+        if (this.backend) {
+            if (address.gpio !== Number(pinout.gpioId)) {
+                logger.debug(`Translated pin ${pinDef.headerId}-${pinDef.id} GPIO ${pinout.gpioId} -> backend line ${address.gpio} (${address.source})`);
+            }
+            return this.backend.createGpio(address, direction, edge, opts);
+        }
+        return new MockGpio(pinout.gpioId, direction, edge, opts);
+    }
+
+    private resolvePinoutByGpioId(gpioId: number): { pinout: any; pinDef: GpioPin } | undefined {
+        const headers = cont.pinouts?.headers || [];
+        for (let i = 0; i < headers.length; i++) {
+            const header = headers[i];
+            for (let k = 0; k < (header.pins || []).length; k++) {
+                const pinout = header.pins[k];
+                if (pinout.type === "gpio" && Number(pinout.gpioId) === Number(gpioId)) {
+                    let pinDef = cont.gpio.pins.getPinById(header.id, pinout.id, false);
+                    if (typeof pinDef !== "undefined") return { pinout, pinDef };
+                    return {
+                        pinout,
+                        pinDef: new GpioPin({
+                            id: pinout.id,
+                            headerId: header.id,
+                            direction: "output",
+                            isInverted: false,
+                            isActive: true,
+                            state: "off"
+                        })
+                    };
+                }
+            }
+        }
+        return undefined;
+    }
+    
+    /**
+     * Attempt to enable sysfs GPIO on Bookworm systems
+     */
+    private async enableSysfsGpio(): Promise<boolean> {
+        try {
+            logger.info('Attempting to enable sysfs GPIO interface...');
+            
+            // Check if we're on a Raspberry Pi
+            if (!fs.existsSync('/proc/device-tree/model')) {
+                logger.info('Not on a Raspberry Pi, skipping sysfs GPIO enable');
+                return false;
+            }
+            
+            const model = fs.readFileSync('/proc/device-tree/model', 'utf8').trim();
+            if (!model.includes('Raspberry Pi')) {
+                logger.info('Not on a Raspberry Pi, skipping sysfs GPIO enable');
+                return false;
+            }
+            
+            // Check if we're on Bookworm or newer
+            try {
+                const osRelease = fs.readFileSync('/etc/os-release', 'utf8');
+                if (!osRelease.includes('bookworm') && !osRelease.includes('bullseye')) {
+                    logger.info('Not on Bookworm/Bullseye, sysfs GPIO should already be available');
+                    return true;
+                }
+            } catch (err) {
+                logger.warn('Could not read /etc/os-release, assuming older OS');
+                return true;
+            }
+            
+            // Try to enable sysfs GPIO using raspi-config
+            try {
+                logger.info('Attempting to enable sysfs GPIO using raspi-config...');
+                execSync('raspi-config nonint do_gpio 0', { stdio: 'pipe' });
+                logger.info('Successfully enabled sysfs GPIO via raspi-config');
+                return true;
+            } catch (err) {
+                logger.warn(`raspi-config failed: ${err.message}`);
+            }
+            
+            // Try to enable via device tree overlay
+            try {
+                logger.info('Attempting to enable sysfs GPIO via device tree...');
+                execSync('echo "dtoverlay=gpio-no-irq" | sudo tee -a /boot/config.txt', { stdio: 'pipe' });
+                logger.info('Added gpio-no-irq overlay to /boot/config.txt (reboot required)');
+                return false; // Requires reboot
+            } catch (err) {
+                logger.warn(`Device tree overlay failed: ${err.message}`);
+            }
+            
+            // Try to enable via sysfs directly
+            try {
+                logger.info('Attempting to enable sysfs GPIO directly...');
+                execSync('echo 1 | sudo tee /sys/class/gpio/export', { stdio: 'pipe' });
+                execSync('echo out | sudo tee /sys/class/gpio/gpio1/direction', { stdio: 'pipe' });
+                execSync('echo 1 | sudo tee /sys/class/gpio/unexport', { stdio: 'pipe' });
+                logger.info('Successfully enabled sysfs GPIO directly');
+                return true;
+            } catch (err) {
+                logger.warn(`Direct sysfs enable failed: ${err.message}`);
+            }
+            
+            logger.error('All methods to enable sysfs GPIO failed');
+            return false;
+            
+        } catch (err) {
+            logger.error(`Error enabling sysfs GPIO: ${err.message}`);
+            return false;
+        }
+    }
+    
+    /**
+     * Initialize GPIO with sysfs detection and enabling
+     */
     public init() {
+        this.platformInfo = getGpioPlatformInfo();
+        const selection = selectGpioBackend(this.platformInfo);
+        this.backend = selection.backend;
+        this.backendReason = selection.reason;
+        this.noReconfigureDirection = selection.noReconfigureDirection || false;
+        if (!this.backend) {
+            logger.error(`No compatible GPIO backend found. ${selection.reason}`);
+            if (this.platformInfo.osCodename === "trixie") {
+                logger.error("Raspberry Pi OS Trixie requires a libgpiod backend. Install @bratbit/onoff and restart.");
+            }
+            throw new Error(`GPIO startup failed: ${selection.reason}`);
+        }
+        logger.info(`Using GPIO backend: ${this.backend.displayName}`);
+        logger.info(`GPIO backend selection reason: ${selection.reason}`);
         this.initPins();
         return this;
     }
@@ -68,12 +234,14 @@ export class GpioController {
                 if (!pinDef.isActive) {
                     if (cont.gpio.isExported(pinout.gpioId)) {
                         try {
-                            let p;
-                            if (gp.accessible)
-                                p = new gp(pinout.gpioId, dir);
-                            else
-                                p = new MockGpio(pinout.gpioId, dir);
-                            p.unexport();
+                            if (this.noReconfigureDirection && typeof pin !== 'undefined' && typeof pin.gpio !== 'undefined') {
+                                // On Trixie, avoid creating a new Gpio instance on an already-held line
+                                // (triggers libgpiod assertion). Use existing handle to unexport.
+                                pin.gpio.unexport();
+                            } else {
+                                let p = this.createGpioInstance(pinDef, pinout, dir, "none", opts);
+                                p.unexport();
+                            }
                         }
                         catch (err) { logger.error(`Unable to unexport pin ${pinDef.headerId}-${pinDef.id}: ${err.message}`); }
                         cont.gpio.setUnexported(pinout.gpioId);
@@ -89,24 +257,41 @@ export class GpioController {
                         this.pins.push(pin);
                     }
                     else if (typeof pin.gpio !== 'undefined') {
-                        if (dir !== pin.gpio.direction()) {
-                            opts.reconfigureDirection = true;
+                        // Normalize direction for comparison: "high" and "low" are both effectively "out"
+                        let currentDir = pin.gpio.direction();
+                        if (currentDir === 'high' || currentDir === 'low') currentDir = 'out';
+                        if (dir !== currentDir) {
+                            if (this.noReconfigureDirection) {
+                                // Workaround for libgpiod assertion crash on Trixie:
+                                // unexport the pin and re-create it with new direction instead of reconfiguring in-place.
+                                try { pin.gpio.unexport(); } catch (e) { /* ignore unexport errors */ }
+                                pin.gpio = undefined;
+                            } else {
+                                opts.reconfigureDirection = true;
+                            }
+                        } else if (this.noReconfigureDirection) {
+                            // Same effective direction — skip re-creation entirely to avoid
+                            // libgpiod assertion when re-requesting an already-held line.
+                            logger.info(`Pin #${pinDef.id} already configured as ${dir} on Header ${pinDef.headerId}; skipping re-init (libgpiod workaround).`);
+                            pin.label = pinDef.name;
+                            return pin;
                         }
-                        pin.gpio.unwatchAll();
+                        if (pin.gpio) pin.gpio.unwatchAll();
                     }
                     pin.label = pinDef.name;
                     if (dir === 'in' && pinDef.debounceTimeout > 0) opts['debounceTimeout'] = pinDef.debounceTimeout;
                     let state = pinDef.initialState === 'last' ? pinDef.state.name : pinDef.initialState || pinDef.state.name;
                     let stateDir = this.translateState(dir, state);
-                    if (gp.accessible) {
-                        logger.info(`Configuring Pin #${pinDef.id} Gpio #${pinout.gpioId}:${stateDir} on Header ${pinDef.headerId} Edge: ${dir === 'in' ? 'both' : 'none'}. ${JSON.stringify(opts)}`);
-                        pin.gpio = new gp(pinout.gpioId, stateDir, dir === 'in' ? 'both' : 'none', opts);
-                        logger.info(`Pin #${pinDef.id} Gpio #${pinout.gpioId}:${pinDef.direction.gpio} on Header ${pinDef.headerId} Configured.`);
+                    const edge = dir === "in" ? "both" : "none";
+                    const address = this.getBackendAddress(pinDef, pinout);
+                    logger.info(`Configuring Pin #${pinDef.id} Gpio #${pinout.gpioId}:${stateDir} (backend ${address.gpio}) on Header ${pinDef.headerId} Edge: ${edge}. ${JSON.stringify(opts)}`);
+                    try {
+                        pin.gpio = this.createGpioInstance(pinDef, pinout, stateDir, edge, opts);
+                    } catch (err) {
+                        logger.error(`Failed to configure GPIO Pin #${pinDef.id} (${pinout.gpioId}) on Header ${pinDef.headerId}: ${err.message}`);
+                        return pin;
                     }
-                    else {
-                        logger.info(`Configuring Mock Pin #${pinDef.id} Gpio #${pinout.gpioId}:${stateDir} on Header ${pinDef.headerId} Edge: ${dir === 'in' ? 'both' : 'none'}. ${JSON.stringify(opts)}`);
-                        pin.gpio = new MockGpio(pinout.gpioId, stateDir, dir === 'in' ? 'both' : 'none', opts);
-                    }
+                    logger.info(`Pin #${pinDef.id} Gpio #${pinout.gpioId}:${pinDef.direction.gpio} on Header ${pinDef.headerId} Configured.`);
                     cont.gpio.setExported(pinout.gpioId);
                     pin.initFeeds();
                     if (dir === 'in') {
@@ -132,11 +317,10 @@ export class GpioController {
         return pin;
     }
     public initPins() {
-        let pinouts = cont.pinouts;
         logger.info(`Initializing GPIO Pins ${cont.gpio.pins.length}`);
         let prevExported = [...cont.gpio.exported];
         let exported = [];
-        let useGpio = gp.accessible;
+        let useGpio = this.backend !== null;
         for (let i = 0; i < cont.gpio.pins.length; i++) {
             let pinDef = cont.gpio.pins.getItemByIndex(i);
             let pin = this.initPin(pinDef);
@@ -179,7 +363,14 @@ export class GpioController {
                 let p;
                 if (useGpio) {
                     logger.info(`Unexporting unused Gpio #${prevExported[i]}`);
-                    p = new gp(prevExported[i], 'out');
+                    const mapped = this.resolvePinoutByGpioId(prevExported[i]);
+                    if (typeof mapped !== "undefined") {
+                        p = this.createGpioInstance(mapped.pinDef, mapped.pinout, "out", "none", { activeLow: false, reconfigureDirection: false });
+                    }
+                    else {
+                        logger.warn(`Could not resolve pinout mapping for previously exported GPIO ${prevExported[i]}. Falling back to mock unexport.`);
+                        p = new MockGpio(prevExported[i], "out");
+                    }
                 }
                 else {
                     logger.info(`Unexporting Mock unused Gpio #${prevExported[i]}`);
@@ -221,6 +412,151 @@ export class GpioController {
             });
         }
         return states;
+    }
+
+    /**
+     * Get sysfs GPIO status and recommendations
+     */
+    public async getSysfsStatus(): Promise<SysfsStatus> {
+        const platform = getGpioPlatformInfo();
+        const selection = selectGpioBackend(platform);
+        const status: SysfsStatus = {
+            sysfsAvailable: platform.sysfsAvailable,
+            sysfsWritable: platform.sysfsWritable,
+            onoffAccessible: platform.onoffAccessible,
+            libgpiodAccessible: platform.libgpiodAccessible,
+            hasGpioCharacterDevice: platform.hasGpioCharacterDevice,
+            platform: platform.platform,
+            isRaspberryPi: platform.isRaspberryPi,
+            osInfo: platform.osInfo,
+            osCodename: platform.osCodename,
+            backendId: selection.backend?.id || null,
+            backendName: selection.backend?.displayName || null,
+            backendReason: selection.reason,
+            recommendations: []
+        };
+        try {
+            if (selection.backend) {
+                status.recommendations.push(`GPIO backend selected: ${selection.backend.displayName}.`);
+            } else {
+                status.recommendations.push(`No GPIO backend selected: ${selection.reason}`);
+            }
+            if (status.osCodename === "trixie") {
+                if (!status.libgpiodAccessible) {
+                    status.recommendations.push("Raspberry Pi OS Trixie requires a libgpiod backend. Install @bratbit/onoff and ensure /dev/gpiochip* is accessible.");
+                }
+                if (!selection.backend) {
+                    status.recommendations.push("Sysfs GPIO cannot be relied on in Trixie. Migrate to libgpiod.");
+                }
+            }
+            else if (!status.sysfsWritable && status.isRaspberryPi) {
+                status.recommendations.push("Sysfs GPIO is not writable. On Bookworm/Bullseye you can try: sudo raspi-config > Interface Options > GPIO.");
+            }
+            if (status.hasGpioCharacterDevice && !status.libgpiodAccessible) {
+                status.recommendations.push("GPIO character devices exist but a libgpiod Node backend is unavailable. Install project dependencies.");
+            }
+            if (status.recommendations.length === 0) {
+                status.recommendations.push('GPIO interface appears to be working correctly.');
+            }
+        } catch (err) {
+            status.recommendations.push(`Error checking GPIO status: ${err.message}`);
+        }
+        return status;
+    }
+
+    /**
+     * Attempt to enable sysfs GPIO and return result
+     */
+    public async enableSysfs(): Promise<SysfsEnableResult> {
+        const platform = getGpioPlatformInfo();
+        const result: SysfsEnableResult = {
+            success: false,
+            message: '',
+            requiresReboot: false,
+            manualInstructions: []
+        };
+        try {
+            if (platform.osCodename === "trixie") {
+                result.success = false;
+                result.message = 'Sysfs GPIO is not a supported path on Raspberry Pi OS Trixie. Use the libgpiod backend instead.';
+                result.manualInstructions = [
+                    '1. Install project dependencies including @bratbit/onoff',
+                    '2. Verify /dev/gpiochip* exists and your user has permission',
+                    '3. Restart relayEquipmentManager'
+                ];
+                return result;
+            }
+            // Check if we're on a Raspberry Pi
+            if (!fs.existsSync('/proc/device-tree/model')) {
+                result.message = 'Not on a Raspberry Pi system';
+                return result;
+            }
+            const model = fs.readFileSync('/proc/device-tree/model', 'utf8').trim();
+            if (!model.includes('Raspberry Pi')) {
+                result.message = 'Not on a Raspberry Pi system';
+                return result;
+            }
+            // Check if sysfs GPIO is already enabled
+            try {
+                if (fs.existsSync('/sys/class/gpio')) {
+                    fs.accessSync('/sys/class/gpio/export', fs.constants.W_OK);
+                    result.success = true;
+                    result.message = 'Sysfs GPIO is already enabled';
+                    return result;
+                }
+            } catch (err) {
+                // Not writable, continue
+            }
+            // Try to enable sysfs GPIO using raspi-config
+            try {
+                logger.info('Attempting to enable sysfs GPIO using raspi-config...');
+                execSync('raspi-config nonint do_gpio 0', { stdio: 'pipe' });
+                result.success = true;
+                result.message = 'Successfully enabled sysfs GPIO via raspi-config';
+                logger.info('Successfully enabled sysfs GPIO via raspi-config');
+                return result;
+            } catch (err) {
+                logger.warn(`raspi-config failed: ${err.message}`);
+            }
+            // Try to enable via device tree overlay
+            try {
+                logger.info('Attempting to enable sysfs GPIO via device tree...');
+                execSync('echo "dtoverlay=gpio-no-irq" | sudo tee -a /boot/config.txt', { stdio: 'pipe' });
+                result.success = true;
+                result.requiresReboot = true;
+                result.message = 'Added gpio-no-irq overlay to /boot/config.txt. A reboot is required for changes to take effect.';
+                logger.info('Added gpio-no-irq overlay to /boot/config.txt (reboot required)');
+                return result;
+            } catch (err2) {
+                logger.warn(`Device tree overlay failed: ${err2.message}`);
+            }
+            // Try to enable via sysfs directly
+            try {
+                logger.info('Attempting to enable sysfs GPIO directly...');
+                execSync('echo 1 | sudo tee /sys/class/gpio/export', { stdio: 'pipe' });
+                execSync('echo out | sudo tee /sys/class/gpio/gpio1/direction', { stdio: 'pipe' });
+                execSync('echo 1 | sudo tee /sys/class/gpio/unexport', { stdio: 'pipe' });
+                result.success = true;
+                result.message = 'Successfully enabled sysfs GPIO directly';
+                logger.info('Successfully enabled sysfs GPIO directly');
+                return result;
+            } catch (err3) {
+                logger.warn(`Direct sysfs enable failed: ${err3.message}`);
+            }
+            result.success = false;
+            result.message = 'All methods to enable sysfs GPIO failed';
+            result.manualInstructions = [
+                '1. Run: sudo raspi-config',
+                '2. Navigate to: Interface Options > GPIO',
+                '3. Select: Yes (to enable sysfs GPIO)',
+                '4. Reboot the system'
+            ];
+            return result;
+        } catch (err) {
+            result.success = false;
+            result.message = `Error enabling sysfs GPIO: ${err.message}`;
+            return result;
+        }
     }
 }
 export class gpioPinComms implements IDevice {

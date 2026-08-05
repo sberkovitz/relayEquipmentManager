@@ -1,4 +1,4 @@
-﻿import * as path from "path";
+import * as path from "path";
 import * as fs from "fs";
 import express = require('express');
 import { config } from "../config/Config";
@@ -14,7 +14,7 @@ import * as ssdp from 'node-ssdp';
 import * as os from 'os';
 import { URL } from "url";
 import { Timestamp } from '../boards/Constants';
-import extend = require("extend");
+const extend = require('extend');
 import { ConfigRoute } from "./services/Config";
 import { StateRoute } from "./services/State";
 import { cont } from "../boards/Controller";
@@ -48,7 +48,14 @@ export class WebServer {
             }
             if (typeof srv !== 'undefined') {
                 this._servers.push(srv);
-                srv.init(c);
+                try {
+                    const initResult = srv.init(c);
+                    if (initResult && typeof initResult.catch === 'function') {
+                        initResult.catch(err => logger.error(`Error initializing ${srv.name} server: ${err.message}`));
+                    }
+                } catch (err) {
+                    logger.error(`Error initializing ${srv.name} server: ${err.message}`);
+                }
                 srv = undefined;
             }
         }
@@ -277,7 +284,7 @@ export class HttpServer extends ProtoServer {
                 return res.status(200).send(config.getSection(req.params.section));
             });
             this.app.use((req, res, next) => {
-                logger.info(`[${new Date().toLocaleTimeString()}] ${req.ip} ${req.method} ${req.url} ${typeof req.body === 'undefined' ? '' : JSON.stringify(req.body)}`);
+                logger.verbose(`[${new Date().toLocaleTimeString()}] ${req.ip} ${req.method} ${req.url} ${typeof req.body === 'undefined' ? '' : JSON.stringify(req.body)}`);
                 next()
             });
             ConfigRoute.initRoutes(this.app);
@@ -332,11 +339,23 @@ export class SsdpServer extends ProtoServer {
             this.server.addUSN('upnp:rootdevice'); // This line will make the server show up in windows.
             this.server.addUSN(this.deviceType);
             // start the server
-            this.server.start()
-                .then(function () {
+            try {
+                const startResult = this.server.start();
+                if (startResult && typeof startResult.then === 'function') {
+                    startResult
+                        .then(function () {
+                            logger.silly('SSDP/UPnP Server started.');
+                            self.isRunning = true;
+                        })
+                        .catch(err => logger.error(`Error starting SSDP Server ${err.message}`));
+                } else {
+                    // Some node-ssdp code paths return void instead of a Promise.
                     logger.silly('SSDP/UPnP Server started.');
                     self.isRunning = true;
-                }).catch(err => logger.error(`Error starting SSDP Server ${err.message}`));
+                }
+            } catch (err) {
+                logger.error(`Error starting SSDP Server ${err.message}`);
+            }
 
             this.server.on('error', function (e) {
                 logger.error('error from SSDP:', e);

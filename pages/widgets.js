@@ -4334,6 +4334,7 @@ $.ui.position.fieldTip = {
             var line = $('<div></div>').appendTo(dlg);
             $('<div></div>').appendTo(line).inputField({ labelText: 'Name', binding: 'name', inputAttrs: { maxLength: 16, style: { width: "14rem" } } });
             $('<div></div>').appendTo(line).checkbox({ labelText: 'Enabled', binding: 'enabled' });
+            $('<div></div>').appendTo(line).checkbox({ labelText: 'Invert Input Signal', binding: 'invert' });
             line = $('<div></div>').appendTo(dlg);
             $('<hr></hr>').appendTo(line).css({ margin: '3px' });
             // Add in the template.

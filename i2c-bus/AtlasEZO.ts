@@ -13,7 +13,7 @@
 import { logger } from "../logger/Logger";
 import { vMaps, valueMap, utils } from "../boards/Constants";
 import { setTimeout, clearTimeout } from "timers";
-import * as extend from "extend";
+const extend = require('extend');
 import { Buffer } from "buffer";
 import { i2cDeviceBase } from "./I2cBus";
 import { webApp } from "../web/Server";
@@ -141,7 +141,7 @@ export class AtlasEZO extends i2cDeviceBase {
                         } catch (err) { this.logError(err, 'Error taking device readings'); }
                     })();
                 }
-                else logger.warn(`${this.device.name} Suspend Polling ${this._suspendPolling}`);
+                else logger.silly(`${this.device.name} Suspend Polling ${this._suspendPolling}`);
             }
         }
         catch (err) { this.logError(err, 'Error Polling Device Values'); }
