@@ -1105,7 +1105,7 @@
     {
       "id": 902,
       "enabled": true,
-      "name": "Sequent MEGA-BAS",
+      "name": "Sequent Building Automation",
       "deviceClass": "SequentMegaBAS",
       "module": "./SequentIO",
       "hasReset": false,
@@ -2617,7 +2617,7 @@
     {
       "id": 905,
       "enabled": true,
-      "name": "Sequent Home Automation v4",
+      "name": "Sequent Home Automation",
       "deviceClass": "SequentHomeAuto",
       "module": "./SequentIO",
       "hasReset": false,

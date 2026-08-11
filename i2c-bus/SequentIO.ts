@@ -794,6 +794,7 @@ export class SequentMegaIND extends SequentIO {
         catch (err) { this.logError(err); Promise.reject(err); }
         finally { this.suspendPolling = false; }
     }
+
     public async setIOChannels(data): Promise<any> {
         try {
             if (typeof data.values !== 'undefined') {
@@ -947,6 +948,24 @@ export class SequentMegaBAS extends SequentIO {
         in0_10pm: { name: '+- 10v input', idOffset: 13 }
     }
     protected triacRegs = { val: 0, set: 1, clear: 2 };
+    private get hwVersionMajor(): number {
+        if (typeof this.info === 'undefined' || typeof this.info.hwVersion === 'undefined') return 0;
+        return parseInt(String(this.info.hwVersion), 10);
+    }
+    protected async setInputTypeConfig(): Promise<void> {
+        try {
+            let uinSel = 0, k1Sel = 0, k10Sel = 0;
+            for (const ch of this.in0_10) {
+                const bit = 1 << (ch.id - 1);
+                if (ch.type === 'T10k') k10Sel |= bit;
+                else if (ch.type === 'T1k' || ch.type === 'DIN') k1Sel |= bit;
+                else uinSel |= bit;
+            }
+            if (!this.i2c.isMock) {
+                await this.i2c.writeI2cBlock(this.device.address, 215, 3, Buffer.from([uinSel, k1Sel, k10Sel]));
+            }
+        } catch (err) { logger.error(`${this.device.name} error writing input type config: ${err.message}`); }
+    }
     public async initAsync(deviceType): Promise<boolean> {
         try {
             // The Sequent cards pick registers at random between cards.  Not ideal but we simply override
@@ -967,6 +986,8 @@ export class SequentMegaBAS extends SequentIO {
             this.ensureIOChannels('OUT 0-10', 'AOUT', this.out0_10, 4);
             this.ensureRelays('Triac', this.relays, 4);
             await this.initOutputs(this.out0_10, this.set0_10Output);
+
+            if (this.device.isActive && this.hwVersionMajor >= 5) await this.setInputTypeConfig();
 
             if (this.device.isActive) await this.getRS485Port();
             return Promise.resolve(true);
@@ -1228,7 +1249,10 @@ export class SequentMegaBAS extends SequentIO {
         try {
             this.suspendPolling = true;
             if (typeof vals.inputs !== 'undefined') {
-                if (typeof vals.inputs.in0_10 !== 'undefined') await this.setIOChannelOptions(vals.inputs.in0_10, this.in0_10);
+                if (typeof vals.inputs.in0_10 !== 'undefined') {
+                    await this.setIOChannelOptions(vals.inputs.in0_10, this.in0_10);
+                    if (this.hwVersionMajor >= 5) await this.setInputTypeConfig();
+                }
                 if (typeof vals.inputs.in4_20 !== 'undefined') await this.setIOChannelOptions(vals.inputs.in4_20, this.in4_20);
                 if (typeof vals.inputs.inDigital !== 'undefined') await this.setIOChannelOptions(vals.inputs.inDigital, this.inDigital);
             }
