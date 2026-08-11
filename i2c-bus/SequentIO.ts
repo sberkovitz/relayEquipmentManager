@@ -1123,7 +1123,24 @@ export class SequentMegaBAS extends SequentIO {
         try {
             let bind = (typeof binding === 'string') ? new DeviceBinding(binding) : binding;
             let relayId = parseInt(bind.params[0], 10);
-            if (isNaN(relayId)) return Promise.reject(new Error(`setDeviceState: Invalid triac Id ${bind.params[0]}`));
+            if (isNaN(relayId)) {
+                let p = bind.params[0].toLowerCase();
+                if (p.startsWith('out0_10')) {
+                    let ord = parseInt(p[p.length - 1], 10);
+                    if (isNaN(ord) || ord < 1 || ord > this.out0_10.length)
+                        return Promise.reject(new Error(`setDeviceState: Invalid 0-10v output channel ${bind.params[0]}`));
+                    let io = this.out0_10[ord - 1];
+                    if (typeof io === 'undefined' || !io.enabled)
+                        return Promise.reject(new Error(`setDeviceState: 0-10v output channel [${bind.params[0]}] is not available.`));
+                    let val = typeof data === 'number' ? data
+                        : typeof data === 'object' && typeof data.value !== 'undefined' ? data.value
+                        : parseFloat(data);
+                    if (isNaN(val)) return Promise.reject(new Error(`setDeviceState: Invalid value for 0-10v output: ${data}`));
+                    await this.set0_10Output(ord, val);
+                    return io;
+                }
+                return Promise.reject(new Error(`setDeviceState: Invalid triac Id ${bind.params[0]}`));
+            }
             let relay = this.relays.find(elem => elem.id === relayId);
             if (typeof relay === 'undefined') return Promise.reject(new Error(`setDeviceState: Could not find triac Id ${bind.params[0]}`));
             if (!relay.enabled) return Promise.reject(new Error(`setDeviceState: Triac [${relay.name}] is not enabled.`));
@@ -1173,7 +1190,13 @@ export class SequentMegaBAS extends SequentIO {
             if (bind.params.length === 0) return Promise.reject(new Error(`getDeviceState: You must supply a triac id to get its state`));
             await this.takeReadings();
             let relayId = parseInt(bind.params[0], 10);
-            if (isNaN(relayId)) return Promise.reject(new Error(`getDeviceState: Invalid triac Id ${bind.params[0]}`));
+            if (isNaN(relayId)) {
+                // Non-numeric param: delegate to base class (handles IO channel bindings like in0_10.8 and feed props like relayVal1).
+                // Reject explicitly if the param is unrecognised rather than returning undefined.
+                const result = await super.getDeviceState(bind);
+                if (typeof result === 'undefined') return Promise.reject(new Error(`getDeviceState: Unrecognized binding parameter: ${bind.params[0]}`));
+                return result;
+            }
             let relay = this.relays.find(elem => elem.id === relayId);
             if (typeof relay === 'undefined') return Promise.reject(new Error(`getDeviceState: Could not find triac Id ${bind.params[0]}`));
             if (!relay.enabled) return Promise.reject(new Error(`getDeviceState: Triac [${relay.name}] is not enabled.`));
@@ -1300,6 +1323,23 @@ export class SequentMegaBAS extends SequentIO {
             case 'fwversion':
                 return this.info.fwVersion;
             default:
+                if (p === 'relayvalall') {
+                    let vals = [];
+                    for (let i = 0; i < this.relays.length; i++) vals.push(this.relays[i].state);
+                    return vals;
+                }
+                else if (p.startsWith('relayval')) {
+                    let ord = parseInt(p.substring(8), 10);
+                    if (!isNaN(ord) && this.relays.length >= ord) return this.relays[ord - 1].state;
+                    logger.error(`Error getting ${this.device.name} triac value for ${prop}`);
+                    return;
+                }
+                else if (p.startsWith('relayobj')) {
+                    let ord = parseInt(p.substring(8), 10);
+                    if (!isNaN(ord) && this.relays.length >= ord) return this.relays[ord - 1];
+                    logger.error(`Error getting ${this.device.name} triac object for ${prop}`);
+                    return;
+                }
                 let iarr;
                 if (p.startsWith('out4_20')) iarr = this.out4_20;
                 else if (p.startsWith('in4_20')) iarr = this.in4_20;
